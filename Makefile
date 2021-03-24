@@ -49,7 +49,7 @@ test:
 
 test-nodocker:
 	$(foreach IMG,$(shell echo test-images/*/ | xargs -n1 basename), \
-	docker build -q test-images/$(IMG) -t rtsp-simple-proxy-test-$(IMG)$(NL))
+	docker build -q test-images/$(IMG) -t rtsp-sidecar-proxy-test-$(IMG)$(NL))
 	$(eval export CGO_ENABLED = 0)
 	go test -v .
 
@@ -108,23 +108,8 @@ release-nodocker:
 	$(eval GOBUILD := go build -ldflags '-X "main.Version=$(VERSION)"')
 	rm -rf release && mkdir release
 
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GOBUILD) -o /tmp/rtsp-simple-proxy.exe
-	cd /tmp && zip -q $(PWD)/release/rtsp-simple-proxy_$(VERSION)_windows_amd64.zip rtsp-simple-proxy.exe
-
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o /tmp/rtsp-simple-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_linux_amd64.tar.gz --owner=0 --group=0 rtsp-simple-proxy
-
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 $(GOBUILD) -o /tmp/rtsp-simple-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_linux_arm6.tar.gz --owner=0 --group=0 rtsp-simple-proxy
-
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o /tmp/rtsp-simple-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_linux_arm7.tar.gz --owner=0 --group=0 rtsp-simple-proxy
-
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GOBUILD) -o /tmp/rtsp-simple-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_linux_arm64.tar.gz --owner=0 --group=0 rtsp-simple-proxy
-
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) -o /tmp/rtsp-simple-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_darwin_amd64.tar.gz --owner=0 --group=0 rtsp-simple-proxy
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o /tmp/rtsp-sidecar-proxy
+	tar -C /tmp -czf $(PWD)/release/rtsp-sidecar-proxy_$(VERSION)_linux_amd64.tar.gz --owner=0 --group=0 rtsp-sidecar-proxy
 
 define DOCKERFILE_TRAVIS
 FROM ruby:alpine

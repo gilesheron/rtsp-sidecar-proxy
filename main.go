@@ -101,7 +101,7 @@ type program struct {
 }
 
 func newProgram(sargs []string) (*program, error) {
-	kingpin.CommandLine.Help = "rtsp-simple-proxy " + Version + "\n\n" +
+	kingpin.CommandLine.Help = "rtsp-sidecar-proxy " + Version + "\n\n" +
 		"RTSP proxy."
 
 	argVersion := kingpin.Flag("version", "print version").Bool()
@@ -140,10 +140,10 @@ func newProgram(sargs []string) (*program, error) {
 		conf.Server.RtspPort = 8554
 	}
 	if conf.Server.RtpPort == 0 {
-		conf.Server.RtpPort = 8050
+		conf.Server.RtpPort = 8000
 	}
 	if conf.Server.RtcpPort == 0 {
-		conf.Server.RtcpPort = 8051
+		conf.Server.RtcpPort = 8001
 	}
 
 	readTimeout, err := time.ParseDuration(conf.ReadTimeout)
@@ -180,7 +180,7 @@ func newProgram(sargs []string) (*program, error) {
 		return nil, fmt.Errorf("no streams provided")
 	}
 
-	log.Printf("rtsp-simple-proxy %s", Version)
+	log.Printf("rtsp-sidecar-proxy %s", Version)
 
 	p := &program{
 		conf:         *conf,
