@@ -190,6 +190,17 @@ func (s *stream) do() bool {
 				RawQuery: s.ur.RawQuery,
 			},
 		})
+
+		if err != nil {
+			s.log("ERR: %s", err)
+			return true
+		}
+
+		if res.StatusCode != gortsplib.StatusOK {
+			s.log("ERR: ANNOUNCE returned code %d (%s)", res.StatusCode, res.StatusMessage)
+			return true
+		}
+
 	} else {
 		res, err = conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.DESCRIBE,
@@ -200,46 +211,46 @@ func (s *stream) do() bool {
 				RawQuery: s.ur.RawQuery,
 			},
 		})
+
+		if err != nil {
+			s.log("ERR: %s", err)
+			return true
+		}
+
+		if res.StatusCode != gortsplib.StatusOK {
+			s.log("ERR: DESCRIBE returned code %d (%s)", res.StatusCode, res.StatusMessage)
+			return true
+		}
+
+		contentType, ok := res.Header["Content-Type"]
+		if !ok || len(contentType) != 1 {
+			s.log("ERR: Content-Type not provided")
+			return true
+		}
+
+		if contentType[0] != "application/sdp" {
+			s.log("ERR: wrong Content-Type, expected application/sdp")
+			return true
+		}
+
+		clientSdpParsed, err := gortsplib.SDPParse(res.Content)
+		if err != nil {
+			s.log("ERR: invalid SDP: %s", err)
+			return true
+		}
+
+		// create a filtered SDP that is used by the server (not by the client)
+		serverSdpParsed, serverSdpText := gortsplib.SDPFilter(clientSdpParsed, res.Content)
+
+		func() {
+			s.p.tcpl.mutex.Lock()
+			defer s.p.tcpl.mutex.Unlock()
+
+			s.clientSdpParsed = clientSdpParsed
+			s.serverSdpText = serverSdpText
+			s.serverSdpParsed = serverSdpParsed
+		}()
 	}
-
-	if err != nil {
-		s.log("ERR: %s", err)
-		return true
-	}
-
-	if res.StatusCode != gortsplib.StatusOK {
-		s.log("ERR: DESCRIBE returned code %d (%s)", res.StatusCode, res.StatusMessage)
-		return true
-	}
-
-	contentType, ok := res.Header["Content-Type"]
-	if !ok || len(contentType) != 1 {
-		s.log("ERR: Content-Type not provided")
-		return true
-	}
-
-	if contentType[0] != "application/sdp" {
-		s.log("ERR: wrong Content-Type, expected application/sdp")
-		return true
-	}
-
-	clientSdpParsed, err := gortsplib.SDPParse(res.Content)
-	if err != nil {
-		s.log("ERR: invalid SDP: %s", err)
-		return true
-	}
-
-	// create a filtered SDP that is used by the server (not by the client)
-	serverSdpParsed, serverSdpText := gortsplib.SDPFilter(clientSdpParsed, res.Content)
-
-	func() {
-		s.p.tcpl.mutex.Lock()
-		defer s.p.tcpl.mutex.Unlock()
-
-		s.clientSdpParsed = clientSdpParsed
-		s.serverSdpText = serverSdpText
-		s.serverSdpParsed = serverSdpParsed
-	}()
 
 	if s.proto == _STREAM_PROTOCOL_UDP {
 		return s.runUdp(conn)
