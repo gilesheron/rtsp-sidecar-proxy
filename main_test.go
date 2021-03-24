@@ -162,6 +162,13 @@ func TestProtocols(t *testing.T) {
 	}
 }
 
+func TestMapToEndpoint(t *testing.T) {
+	hmLB := NewHashModLB()
+	var testEndpoints []net.IP
+	AddTestingEndpoints(hmLB, testEndpoints)
+	MapToEndpoint(hmLB, net.ParseIP("127.0.0.1"))
+}
+
 func TestStreamAuth(t *testing.T) {
 	cnt1, err := newContainer("rtsp-simple-server", "server", []string{
 		"--read-user=testuser",
