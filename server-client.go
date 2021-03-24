@@ -234,7 +234,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		})
 		return true
 
-	case gortsplib.DESCRIBE:
+	case gortsplib.DESCRIBE, gortsplib.ANNOUNCE:
 		if c.state != _CLIENT_STATE_STARTING {
 			c.writeResError(req, gortsplib.StatusBadRequest,
 				fmt.Errorf("client is in state '%s' instead of '%s'", c.state, _CLIENT_STATE_STARTING))
@@ -256,12 +256,26 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			str, ok := c.p.streams[path]
 			if !ok {
 
+				clientPush := false
+				if req.Method == gortsplib.ANNOUNCE {
+					clientPush = true
+				}
+
 				// create new stream
-				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol)
+				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientPush)
+				c.log("created new stream %s path %s", req.Url.Host, path)
 
 				if err != nil {
-					return nil, fmt.Errorf("there is no stream on path '%s'", path)
+					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
+
+				str, ok = c.p.streams[path]
+				if !ok {
+					return nil, fmt.Errorf("WTF???")
+				}
+
+				// run the stream
+				go str.run()
 			}
 
 			if str.state != _STREAM_STATE_READY {

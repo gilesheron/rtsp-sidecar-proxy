@@ -183,6 +183,7 @@ func newProgram(sargs []string) (*program, error) {
 		readTimeout:  readTimeout,
 		writeTimeout: writeTimeout,
 		protocols:    protocols,
+		streams:      make(map[string]*stream),
 	}
 
 	p.udplRtp, err = newServerUdpListener(p, p.conf.Server.RtpPort, _TRACK_FLOW_RTP)

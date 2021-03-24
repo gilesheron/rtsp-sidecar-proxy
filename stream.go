@@ -40,18 +40,25 @@ type stream struct {
 	path            string
 	ur              *url.URL
 	proto           streamProtocol
+	clientSdpText	[]byte
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
 	serverSdpParsed *sdp.Message
 	firstTime       bool
+	clientPush		bool
 	terminate       chan struct{}
 	done            chan struct{}
 }
 
-func newStream(p *program, path string, ur *url.URL, proto streamProtocol) (*stream, error) {
+func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientPush bool) (*stream, error) {
 
 	if ur.Port() == "" {
 		ur.Host = ur.Hostname() + ":554"
+	}
+
+	// find an endpoint
+	if ur.Hostname() == "10.96.2.2" {
+		ur.Host = "192.168.154.31:8554"
 	}
 
 	if ur.Scheme != "rtsp" {
@@ -67,14 +74,15 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol) (*str
 	}
 
 	s := &stream{
-		p:         p,
-		state:     _STREAM_STATE_STARTING,
-		path:      path,
-		ur:        ur,
-		proto:     proto,
-		firstTime: true,
-		terminate: make(chan struct{}),
-		done:      make(chan struct{}),
+		p:          p,
+		state:      _STREAM_STATE_STARTING,
+		path:       path,
+		ur:         ur,
+		proto:      proto,
+		firstTime:  true,
+		clientPush: clientPush,
+		terminate:  make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 
 	return s, nil
@@ -172,15 +180,28 @@ func (s *stream) do() bool {
 		return true
 	}
 
-	res, err = conn.WriteRequest(&gortsplib.Request{
-		Method: gortsplib.DESCRIBE,
-		Url: &url.URL{
-			Scheme:   "rtsp",
-			Host:     s.ur.Host,
-			Path:     s.ur.Path,
-			RawQuery: s.ur.RawQuery,
-		},
-	})
+	if s.clientPush {
+		res, err = conn.WriteRequest(&gortsplib.Request{
+			Method: gortsplib.ANNOUNCE,
+			Url: &url.URL{
+				Scheme:   "rtsp",
+				Host:     s.ur.Host,
+				Path:     s.ur.Path,
+				RawQuery: s.ur.RawQuery,
+			},
+		})
+	} else {
+		res, err = conn.WriteRequest(&gortsplib.Request{
+			Method: gortsplib.DESCRIBE,
+			Url: &url.URL{
+				Scheme:   "rtsp",
+				Host:     s.ur.Host,
+				Path:     s.ur.Path,
+				RawQuery: s.ur.RawQuery,
+			},
+		})
+	}
+
 	if err != nil {
 		s.log("ERR: %s", err)
 		return true
