@@ -38,7 +38,6 @@ type stream struct {
 	p               *program
 	state           streamState
 	path            string
-	conf            streamConf
 	ur              *url.URL
 	proto           streamProtocol
 	clientSdpParsed *sdp.Message
@@ -49,17 +48,10 @@ type stream struct {
 	done            chan struct{}
 }
 
-func newStream(p *program, path string, conf streamConf) (*stream, error) {
-	ur, err := url.Parse(conf.Url)
-	if err != nil {
-		return nil, err
-	}
+func newStream(p *program, path string, ur *url.URL, proto streamProtocol) (*stream, error) {
 
 	if ur.Port() == "" {
 		ur.Host = ur.Hostname() + ":554"
-	}
-	if conf.Protocol == "" {
-		conf.Protocol = "udp"
 	}
 
 	if ur.Scheme != "rtsp" {
@@ -74,25 +66,10 @@ func newStream(p *program, path string, conf streamConf) (*stream, error) {
 		}
 	}
 
-	proto, err := func() (streamProtocol, error) {
-		switch conf.Protocol {
-		case "udp":
-			return _STREAM_PROTOCOL_UDP, nil
-
-		case "tcp":
-			return _STREAM_PROTOCOL_TCP, nil
-		}
-		return streamProtocol(0), fmt.Errorf("unsupported protocol: '%v'", conf.Protocol)
-	}()
-	if err != nil {
-		return nil, err
-	}
-
 	s := &stream{
 		p:         p,
 		state:     _STREAM_STATE_STARTING,
 		path:      path,
-		conf:      conf,
 		ur:        ur,
 		proto:     proto,
 		firstTime: true,

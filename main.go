@@ -54,7 +54,6 @@ type conf struct {
 		ReadUser  string   `yaml:"readUser"`
 		ReadPass  string   `yaml:"readPass"`
 	} `yaml:"server"`
-	Streams map[string]streamConf `yaml:"streams"`
 }
 
 func loadConf(confPath string) (*conf, error) {
@@ -105,7 +104,7 @@ func newProgram(sargs []string) (*program, error) {
 		"RTSP proxy."
 
 	argVersion := kingpin.Flag("version", "print version").Bool()
-	argConfPath := kingpin.Arg("confpath", "path of a config file. The default is conf.yml. Use 'stdin' to read config from stdin").Default("conf.yml").String()
+	argConfPath := kingpin.Arg("confpath", "path of a config file. The default is conf.yml. Use 'stdin' to read config from stdin").Default("/tmp/conf.yml").String()
 
 	kingpin.MustParse(kingpin.CommandLine.Parse(sargs))
 
@@ -140,10 +139,10 @@ func newProgram(sargs []string) (*program, error) {
 		conf.Server.RtspPort = 8554
 	}
 	if conf.Server.RtpPort == 0 {
-		conf.Server.RtpPort = 8000
+		conf.Server.RtpPort = 8050
 	}
 	if conf.Server.RtcpPort == 0 {
-		conf.Server.RtcpPort = 8001
+		conf.Server.RtcpPort = 8051
 	}
 
 	readTimeout, err := time.ParseDuration(conf.ReadTimeout)
@@ -176,9 +175,6 @@ func newProgram(sargs []string) (*program, error) {
 	if conf.Server.RtcpPort != (conf.Server.RtpPort + 1) {
 		return nil, fmt.Errorf("rtcp port must be rtp port plus 1")
 	}
-	if len(conf.Streams) == 0 {
-		return nil, fmt.Errorf("no streams provided")
-	}
 
 	log.Printf("rtsp-sidecar-proxy %s", Version)
 
@@ -187,15 +183,6 @@ func newProgram(sargs []string) (*program, error) {
 		readTimeout:  readTimeout,
 		writeTimeout: writeTimeout,
 		protocols:    protocols,
-		streams:      make(map[string]*stream),
-	}
-
-	for path, val := range p.conf.Streams {
-		var err error
-		p.streams[path], err = newStream(p, path, val)
-		if err != nil {
-			return nil, fmt.Errorf("error in stream '%s': %s", path, err)
-		}
 	}
 
 	p.udplRtp, err = newServerUdpListener(p, p.conf.Server.RtpPort, _TRACK_FLOW_RTP)
@@ -213,10 +200,6 @@ func newProgram(sargs []string) (*program, error) {
 		return nil, err
 	}
 
-	for _, s := range p.streams {
-		go s.run()
-	}
-
 	go p.udplRtp.run()
 	go p.udplRtcp.run()
 	go p.tcpl.run()
@@ -225,9 +208,6 @@ func newProgram(sargs []string) (*program, error) {
 }
 
 func (p *program) close() {
-	for _, s := range p.streams {
-		s.close()
-	}
 
 	p.tcpl.close()
 	p.udplRtcp.close()

@@ -255,7 +255,13 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 			str, ok := c.p.streams[path]
 			if !ok {
-				return nil, fmt.Errorf("there is no stream on path '%s'", path)
+
+				// create new stream
+				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol)
+
+				if err != nil {
+					return nil, fmt.Errorf("there is no stream on path '%s'", path)
+				}
 			}
 
 			if str.state != _STREAM_STATE_READY {
