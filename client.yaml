@@ -21,23 +21,10 @@ metadata:
   name: client
   namespace: default
 spec:
-  initContainers:
-    - name: init
-      image: init:latest
-      imagePullPolicy: Never
-      securityContext:
-        allowPrivilegeEscalation: false
-        capabilities:
-          add:
-          - NET_ADMIN
-          - NET_RAW
-          drop:
-          - ALL
-        privileged: false
   containers:
     - name: ffmpeg
       image: linuxserver/ffmpeg:latest
-      imagePullPolicy: Never
+      imagePullPolicy: IfNotPresent
       command: ["ffmpeg"]
       args: ["-re", "-stream_loop", "-1", "-i", "/tmp/file.ts", "-c", "copy", "-f", "rtsp", "rtsp://10.96.2.2:554/mystream"]
       volumeMounts:

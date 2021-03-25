@@ -40,25 +40,35 @@ type stream struct {
 	path            string
 	ur              *url.URL
 	proto           streamProtocol
-	clientSdpText	[]byte
+	clientSdpText   []byte
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
 	serverSdpParsed *sdp.Message
 	firstTime       bool
-	clientPush		bool
+	clientPush      bool
 	terminate       chan struct{}
 	done            chan struct{}
 }
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientPush bool) (*stream, error) {
 
-	if ur.Port() == "" {
-		ur.Host = ur.Hostname() + ":554"
+	// create a load balancer type and retrieve endpoints associated with ur.Hostname
+	lb, err := NewHashModLB(ur.Hostname())
+	if err != nil {
+		return nil, fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
 	}
 
-	// find an endpoint
-	if ur.Hostname() == "10.96.2.2" {
-		ur.Host = "192.168.154.31:8554"
+	// map to specific endpoint
+	host, err := MapToEndpoint(lb, ur.Hostname())
+
+	if err != nil {
+		return nil, err
+	}
+
+	ur.Host = host
+
+	if ur.Port() == "" {
+		ur.Host = ur.Host + ":554"
 	}
 
 	if ur.Scheme != "rtsp" {
