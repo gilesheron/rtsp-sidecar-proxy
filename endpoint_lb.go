@@ -52,6 +52,56 @@ func getSvcEndpoints(clusterIP string) ([]string, error) {
 	return endpoints, err
 }
 
+type RoundRobinLB struct {
+	endpoints []string
+	index     int
+}
+
+func (rr *RoundRobinLB) setEndpoints(endpoints []string) {
+	rr.endpoints = endpoints
+}
+
+func NewRoundRobinLB(clusterIP string) (*RoundRobinLB, error) {
+	LB := RoundRobinLB{}
+	endpoints, err := getSvcEndpoints(clusterIP)
+
+	if err != nil {
+		return &LB, err
+	}
+
+	LB.endpoints = endpoints
+	LB.index = -1
+	return &LB, nil
+}
+
+// getMapping -> return endpoint at index then update index
+func (rr *RoundRobinLB) getMapping(clusterIP string) (string, error) {
+	err := rr.advanceIndex()
+
+	if err != nil {
+		return "", err
+	}
+
+	endpoint := rr.endpoints[rr.index]
+	return endpoint, nil
+}
+
+func (rr *RoundRobinLB) advanceIndex() error {
+
+	if len(rr.endpoints) == 0 {
+		return fmt.Errorf("len of endpoints cant be 0")
+	}
+
+	// edge case, index needs to reset to 0
+	if rr.index == len(rr.endpoints) {
+		rr.index = 0
+	} else {
+		rr.index += 1
+	}
+
+	return nil
+}
+
 // HashModLB -> Simple hash modulo load balancer type
 type HashModLB struct {
 	endpoints []string

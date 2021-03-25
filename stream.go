@@ -53,7 +53,7 @@ type stream struct {
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientPush bool) (*stream, error) {
 
 	// create a load balancer type and retrieve endpoints associated with ur.Hostname
-	lb, err := NewHashModLB(ur.Hostname())
+	lb, err := NewRoundRobinLB(ur.Hostname())
 	if err != nil {
 		return nil, fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
 	}
