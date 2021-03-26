@@ -26,11 +26,10 @@ func UseTestingEndpoints(lb LoadBalancer, endpoints []string) {
 	lb.setEndpoints(endpoints)
 }
 
-// getSvcEndpoints -> Given a cluster ip, retrieve the endpoints
-// associated.
+// getSvcEndpoints -> Given a cluster ip, retrieve the associated endpoints
 func getSvcEndpoints(clusterIP string) ([]string, error) {
-	host := "endpoint-api"
-	path := "/endpoints"
+	host := "k8s-apiclient-service:9899"
+	path := "/svc/endpoints"
 	queryParams := "clusterIP=" + url.QueryEscape(clusterIP)
 
 	query := fmt.Sprintf("%s%s?%s", host, path, queryParams)
@@ -93,7 +92,7 @@ func (rr *RoundRobinLB) advanceIndex() error {
 	}
 
 	// edge case, index needs to reset to 0
-	if rr.index == len(rr.endpoints) {
+	if rr.index == (len(rr.endpoints) - 1) {
 		rr.index = 0
 	} else {
 		rr.index += 1

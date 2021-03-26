@@ -58,7 +58,7 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 		return nil, fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
 	}
 
-	// map to specific endpoint
+	// map to specific k8s service endpoint
 	host, err := MapToEndpoint(lb, ur.Hostname())
 
 	if err != nil {
