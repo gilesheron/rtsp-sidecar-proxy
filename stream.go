@@ -40,17 +40,16 @@ type stream struct {
 	path            string
 	ur              *url.URL
 	proto           streamProtocol
-	clientSdpText	[]byte
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
 	serverSdpParsed *sdp.Message
+	clientAnnounce	bool
 	firstTime       bool
-	clientPush		bool
 	terminate       chan struct{}
 	done            chan struct{}
 }
 
-func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientPush bool) (*stream, error) {
+func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
 
 	if ur.Port() == "" {
 		ur.Host = ur.Hostname() + ":554"
@@ -74,15 +73,16 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 	}
 
 	s := &stream{
-		p:          p,
-		state:      _STREAM_STATE_STARTING,
-		path:       path,
-		ur:         ur,
-		proto:      proto,
-		firstTime:  true,
-		clientPush: clientPush,
-		terminate:  make(chan struct{}),
-		done:       make(chan struct{}),
+		p:               p,
+		state:           _STREAM_STATE_STARTING,
+		path:            path,
+		ur:              ur,
+		proto:           proto,
+		firstTime:       true,
+		clientAnnounce:  clientAnnounce,
+		clientSdpParsed: clientSdpParsed,
+		terminate:       make(chan struct{}),
+		done:            make(chan struct{}),
 	}
 
 	return s, nil
@@ -133,7 +133,7 @@ func (s *stream) do() bool {
 	}
 
 	if err != nil {
-		s.log("ERR: %s", err)
+		s.log("Dial ERR: %s", err)
 		return true
 	}
 	defer nconn.Close()
@@ -157,7 +157,7 @@ func (s *stream) do() bool {
 		WriteTimeout: s.p.writeTimeout,
 	})
 	if err != nil {
-		s.log("ERR: %s", err)
+		s.log("Connection ERR: %s", err)
 		return true
 	}
 
@@ -170,7 +170,7 @@ func (s *stream) do() bool {
 		},
 	})
 	if err != nil {
-		s.log("ERR: %s", err)
+		s.log("OPTIONS ERR: %s", err)
 		return true
 	}
 
@@ -180,7 +180,15 @@ func (s *stream) do() bool {
 		return true
 	}
 
-	if s.clientPush {
+	// Init vars here so we can have common mutex lock after the if/else
+	clientSdpParsed := s.clientSdpParsed
+	serverSdpParsed := s.serverSdpParsed
+	serverSdpText := s.serverSdpText
+
+	if s.clientAnnounce == true {
+		// create a filtered SDP that is sent to the server
+		serverSdpParsed, serverSdpText = gortsplib.SDPFilter(clientSdpParsed, res.Content)
+
 		res, err = conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.ANNOUNCE,
 			Url: &url.URL{
@@ -189,10 +197,15 @@ func (s *stream) do() bool {
 				Path:     s.ur.Path,
 				RawQuery: s.ur.RawQuery,
 			},
+			Header: gortsplib.Header{
+				"Content-Type": []string{"application/sdp"},
+				"Content-Length": []string{strconv.Itoa(len(serverSdpText))},
+			},
+			Content: serverSdpText,
 		})
 
 		if err != nil {
-			s.log("ERR: %s", err)
+			s.log("ANNOUNCE ERR: %s", err)
 			return true
 		}
 
@@ -213,7 +226,7 @@ func (s *stream) do() bool {
 		})
 
 		if err != nil {
-			s.log("ERR: %s", err)
+			s.log("DESCRIBE ERR: %s", err)
 			return true
 		}
 
@@ -233,24 +246,25 @@ func (s *stream) do() bool {
 			return true
 		}
 
-		clientSdpParsed, err := gortsplib.SDPParse(res.Content)
+		clientSdpParsed, err = gortsplib.SDPParse(res.Content)
 		if err != nil {
 			s.log("ERR: invalid SDP: %s", err)
 			return true
 		}
 
 		// create a filtered SDP that is used by the server (not by the client)
-		serverSdpParsed, serverSdpText := gortsplib.SDPFilter(clientSdpParsed, res.Content)
-
-		func() {
-			s.p.tcpl.mutex.Lock()
-			defer s.p.tcpl.mutex.Unlock()
-
-			s.clientSdpParsed = clientSdpParsed
-			s.serverSdpText = serverSdpText
-			s.serverSdpParsed = serverSdpParsed
-		}()
+		serverSdpParsed, serverSdpText = gortsplib.SDPFilter(clientSdpParsed, res.Content)
 	}
+
+	// update the stream
+	func() {
+		s.p.tcpl.mutex.Lock()
+		defer s.p.tcpl.mutex.Unlock()
+
+		s.clientSdpParsed = clientSdpParsed
+		s.serverSdpText = serverSdpText
+		s.serverSdpParsed = serverSdpParsed
+	}()
 
 	if s.proto == _STREAM_PROTOCOL_UDP {
 		return s.runUdp(conn)
@@ -350,7 +364,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 			},
 		})
 		if err != nil {
-			s.log("ERR: %s", err)
+			s.log("Setup ERR: %s", err)
 			udplRtp.close()
 			udplRtcp.close()
 			return true
@@ -408,7 +422,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 		},
 	})
 	if err != nil {
-		s.log("ERR: %s", err)
+		s.log("PLAY ERR: %s", err)
 		return true
 	}
 
@@ -464,7 +478,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 				},
 			})
 			if err != nil {
-				s.log("ERR: %s", err)
+				s.log("Options ERR: %s", err)
 				return true
 			}
 
@@ -547,7 +561,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient) bool {
 			},
 		})
 		if err != nil {
-			s.log("ERR: %s", err)
+			s.log("Setup ERR: %s", err)
 			return true
 		}
 
@@ -581,7 +595,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient) bool {
 		},
 	})
 	if err != nil {
-		s.log("ERR: %s", err)
+		s.log("Write Request ERR: %s", err)
 		return true
 	}
 
@@ -592,7 +606,7 @@ outer:
 		}
 		vres, err := conn.ReadInterleavedFrameOrResponse(frame)
 		if err != nil {
-			s.log("ERR: %s", err)
+			s.log("ReadInterleavedFrameOrResponse ERR: %s", err)
 			return true
 		}
 
@@ -638,7 +652,7 @@ outer:
 			}
 			err := conn.ReadInterleavedFrame(frame)
 			if err != nil {
-				s.log("ERR: %s", err)
+				s.log("ReadInterleaved ERR: %s", err)
 				close(chanConnError)
 				break
 			}

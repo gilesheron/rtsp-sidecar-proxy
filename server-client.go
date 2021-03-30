@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aler9/gortsplib"
+	"gortc.io/sdp"
 )
 
 func interleavedChannelToTrack(channel uint8) (int, trackFlow) {
@@ -115,7 +116,7 @@ func (c *serverClient) run() {
 		req, err := c.conn.ReadRequest()
 		if err != nil {
 			if err != io.EOF {
-				c.log("ERR: %s", err)
+				c.log("Read ERR: %s", err)
 			}
 			break
 		}
@@ -138,7 +139,7 @@ func (c *serverClient) run() {
 }
 
 func (c *serverClient) writeResError(req *gortsplib.Request, code gortsplib.StatusCode, err error) {
-	c.log("ERR: %s", err)
+	c.log("WRITE RES ERR: %s", err)
 
 	header := gortsplib.Header{}
 	if cseq, ok := req.Header["CSeq"]; ok && len(cseq) == 1 {
@@ -224,6 +225,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			Header: gortsplib.Header{
 				"CSeq": []string{cseq[0]},
 				"Public": []string{strings.Join([]string{
+					string(gortsplib.ANNOUNCE),
 					string(gortsplib.DESCRIBE),
 					string(gortsplib.SETUP),
 					string(gortsplib.PLAY),
@@ -249,20 +251,42 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return true
 		}
 
-		sdp, err := func() ([]byte, error) {
+		clientAnnounce := false
+		clientSdpParsed := new(sdp.Message)
+
+		if req.Method == gortsplib.ANNOUNCE {
+			contentType, ok := req.Header["Content-Type"]
+			if !ok || len(contentType) != 1 {
+				c.writeResError(req, gortsplib.StatusBadRequest,
+					fmt.Errorf("ERR: Content-Type not provided"))
+				return true
+			}
+
+			if contentType[0] != "application/sdp" {
+				c.writeResError(req, gortsplib.StatusBadRequest,
+					fmt.Errorf("ERR: wrong Content-Type, expected application/sdp"))
+				return true
+			}
+
+			clientSdpParsed, err = gortsplib.SDPParse(req.Content)
+			if err != nil {
+				c.writeResError(req, gortsplib.StatusBadRequest, err)
+				return true
+			}
+
+			// note that we're pushing to the server
+			clientAnnounce = true
+		}
+
+		svrSdpText, err := func() ([]byte, error) {
 			c.p.tcpl.mutex.RLock()
 			defer c.p.tcpl.mutex.RUnlock()
 
 			str, ok := c.p.streams[path]
 			if !ok {
 
-				clientPush := false
-				if req.Method == gortsplib.ANNOUNCE {
-					clientPush = true
-				}
-
 				// create new stream
-				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientPush)
+				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
 				c.log("created new stream %s path %s", req.Url.Host, path)
 
 				if err != nil {
@@ -289,15 +313,25 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return false
 		}
 
-		c.conn.WriteResponse(&gortsplib.Response{
-			StatusCode: gortsplib.StatusOK,
-			Header: gortsplib.Header{
-				"CSeq":         []string{cseq[0]},
-				"Content-Base": []string{req.Url.String() + "/"},
-				"Content-Type": []string{"application/sdp"},
-			},
-			Content: sdp,
-		})
+		if req.Method == gortsplib.ANNOUNCE {
+			c.conn.WriteResponse(&gortsplib.Response{
+				StatusCode: gortsplib.StatusOK,
+				Header: gortsplib.Header{
+					"CSeq":         []string{cseq[0]},
+				},
+			})
+		} else {
+			c.conn.WriteResponse(&gortsplib.Response{
+				StatusCode: gortsplib.StatusOK,
+				Header: gortsplib.Header{
+					"CSeq":         []string{cseq[0]},
+					"Content-Base": []string{req.Url.String() + "/"},
+					"Content-Type": []string{"application/sdp"},
+				},
+				Content: svrSdpText,
+			})
+		}
+
 		return true
 
 	case gortsplib.SETUP:
@@ -348,7 +382,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				}
 
 				if c.path != "" && path != c.path {
-					c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path has changed"))
+					c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path %s has changed", path))
 					return false
 				}
 
@@ -411,7 +445,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				}
 
 				if c.path != "" && path != c.path {
-					c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path has changed"))
+					c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path %s has changed", path))
 					return false
 				}
 
@@ -481,8 +515,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		}
 
 		if path != c.path {
-			c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path has changed"))
-			return false
+			// c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path %s has changed (was %s) for PLAY", path, c.path))
+			// return false
+			c.log("path %s has changed (was %s)", path, c.path)
 		}
 
 		err := func() error {
@@ -542,7 +577,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				_, err := c.conn.NetConn().Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						c.log("ERR: %s", err)
+						c.log("Read ERR: %s", err)
 					}
 					return false
 				}
@@ -559,7 +594,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		}
 
 		if path != c.path {
-			c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path has changed"))
+			c.writeResError(req, gortsplib.StatusBadRequest, fmt.Errorf("path %s has changed (was %s) for PAUSE", path, c.path))
 			return false
 		}
 
