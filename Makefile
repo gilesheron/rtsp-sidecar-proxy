@@ -87,10 +87,6 @@ run:
 	temp \
 	/out $(ARGS)
 
-build-binary:
-	echo "$$DOCKERFILE_RELEASE" | docker build . -f - -t temp \
-	&& docker run --rm -it -v $(PWD):/out
-
 define DOCKERFILE_RELEASE
 FROM $(BASE_IMAGE)
 RUN apk add --no-cache zip make git tar

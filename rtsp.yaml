@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtsp
+  labels:
+    run: rtsp
+spec:
+  clusterIP: 10.96.2.2
+  ports:
+  - name: rtsp
+    port: 554
+    protocol: TCP
+    targetPort: 8554
+  - name: rtp 
+    port: 8000
+    protocol: UDP
+    targetPort: 8000
+  - name: rtcp
+    port: 8001
+    protocol: UDP
+    targetPort: 8001 
+  selector:
+    app: rtsp 
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtsp
+  labels:
+    app: rtsp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rtsp
+  template:
+    metadata:
+      labels:
+        app: rtsp
+    spec:
+      containers:
+        - name: rtsp
+          image: aler9/rtsp-simple-server:latest
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 8554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001

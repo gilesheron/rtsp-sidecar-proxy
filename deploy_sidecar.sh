@@ -1,3 +1,4 @@
+kubectl delete pod client
 
 # since apply is idempotent, just create the api every deploy 
 kubectl apply -f k8s-client.yaml

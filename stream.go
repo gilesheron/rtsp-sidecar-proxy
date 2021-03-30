@@ -65,11 +65,8 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 		return nil, err
 	}
 
+	// assign host to stream session
 	ur.Host = host
-
-	if ur.Port() == "" {
-		ur.Host = ur.Host + ":554"
-	}
 
 	if ur.Scheme != "rtsp" {
 		return nil, fmt.Errorf("unsupported scheme: %s", ur.Scheme)
