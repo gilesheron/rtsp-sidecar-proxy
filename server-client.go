@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 func interleavedChannelToTrack(channel uint8) (int, trackFlow) {
@@ -317,16 +318,27 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				go str.run()
 			}
 
-			if str.state != _STREAM_STATE_READY {
-				return nil, fmt.Errorf("stream '%s' is not ready yet", path)
+			for i := 0; str.state != _STREAM_STATE_READY; i++ {
+				c.p.tcpl.mutex.RUnlock()
+
+				if i > 5 {
+					return nil, fmt.Errorf("stream '%s' is not ready yet", path)
+				}
+
+				time.Sleep(time.Millisecond)
+				c.p.tcpl.mutex.RLock()
 			}
 
+//			if str.state != _STREAM_STATE_READY {
+//				return nil, fmt.Errorf("stream '%s' is not ready yet", path)
+//			}
 			return str.serverSdpText, nil
 		}()
 		if err != nil {
 			c.writeResError(req, gortsplib.StatusBadRequest, err)
 			return false
 		}
+
 
 		if req.Method == gortsplib.ANNOUNCE {
 			c.conn.WriteResponse(&gortsplib.Response{
