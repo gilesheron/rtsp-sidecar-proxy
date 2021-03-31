@@ -47,6 +47,24 @@ type stream struct {
 	firstTime       bool
 	terminate       chan struct{}
 	done            chan struct{}
+	conn            *gortsplib.ConnClient
+}
+
+// GetLocalIP returns the non loopback local IP of the host
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
@@ -58,6 +76,8 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 	// find an endpoint
 	if ur.Hostname() == "10.96.2.2" {
 		ur.Host = "192.168.154.31:8554"
+	} else if ur.Hostname() == getLocalIP() {
+		ur.Host = "127.0.0.1:554"
 	}
 
 	if ur.Scheme != "rtsp" {
@@ -161,6 +181,8 @@ func (s *stream) do() bool {
 		return true
 	}
 
+	s.log("Created connection to %s", conn.NetConn().RemoteAddr().String())
+
 	res, err := conn.WriteRequest(&gortsplib.Request{
 		Method: gortsplib.OPTIONS,
 		Url: &url.URL{
@@ -173,6 +195,8 @@ func (s *stream) do() bool {
 		s.log("OPTIONS ERR: %s", err)
 		return true
 	}
+
+	s.log("Sent OPTIONS to server, response %s", res.StatusMessage)
 
 	// OPTIONS is not available in some cameras
 	if res.StatusCode != gortsplib.StatusOK && res.StatusCode != gortsplib.StatusNotFound {
@@ -230,6 +254,8 @@ func (s *stream) do() bool {
 			return true
 		}
 
+		s.log("Sent DESCRIBE to Server, response %s", res.StatusMessage)
+
 		if res.StatusCode != gortsplib.StatusOK {
 			s.log("ERR: DESCRIBE returned code %d (%s)", res.StatusCode, res.StatusMessage)
 			return true
@@ -264,16 +290,19 @@ func (s *stream) do() bool {
 		s.clientSdpParsed = clientSdpParsed
 		s.serverSdpText = serverSdpText
 		s.serverSdpParsed = serverSdpParsed
+		s.conn = conn
 	}()
 
+	s.log("running stream with protocol %s", s.proto)
+
 	if s.proto == _STREAM_PROTOCOL_UDP {
-		return s.runUdp(conn)
+		return s.runUdp(conn, s.clientAnnounce)
 	} else {
-		return s.runTcp(conn)
+		return s.runTcp(conn, s.clientAnnounce)
 	}
 }
 
-func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
+func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 	publisherIp := conn.NetConn().RemoteAddr().(*net.TCPAddr).IP
 
 	var streamUdpListenerPairs []streamUdpListenerPair
@@ -312,6 +341,16 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 				return
 			}
 		}()
+
+		transportHeader := strings.Join([]string{
+			"RTP/AVP/UDP",
+			"unicast",
+			fmt.Sprintf("client_port=%d-%d", rtpPort, rtcpPort),
+		}, ";")
+
+		if clientAnnounce {
+			transportHeader += ";mode=record"
+		}
 
 		res, err := conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.SETUP,
@@ -356,11 +395,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 				}
 			}(),
 			Header: gortsplib.Header{
-				"Transport": []string{strings.Join([]string{
-					"RTP/AVP/UDP",
-					"unicast",
-					fmt.Sprintf("client_port=%d-%d", rtpPort, rtcpPort),
-				}, ";")},
+				"Transport": []string{transportHeader},
 			},
 		})
 		if err != nil {
@@ -369,6 +404,8 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 			udplRtcp.close()
 			return true
 		}
+
+		s.log("Sent SETUP to server, response %s", res.StatusMessage)
 
 		if res.StatusCode != gortsplib.StatusOK {
 			s.log("ERR: SETUP returned code %d (%s)", res.StatusCode, res.StatusMessage)
@@ -425,6 +462,8 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 		s.log("PLAY ERR: %s", err)
 		return true
 	}
+
+	s.log("Sent PLAY to server, response %s", res.StatusMessage)
 
 	if res.StatusCode != gortsplib.StatusOK {
 		s.log("ERR: PLAY returned code %d (%s)", res.StatusCode, res.StatusMessage)
@@ -506,9 +545,19 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 	}
 }
 
-func (s *stream) runTcp(conn *gortsplib.ConnClient) bool {
+func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 	for i, media := range s.clientSdpParsed.Medias {
 		interleaved := fmt.Sprintf("interleaved=%d-%d", (i * 2), (i*2)+1)
+
+		transportHeader := strings.Join([]string{
+			"RTP/AVP/TCP",
+			"unicast",
+			interleaved,
+		}, ";")
+
+		if clientAnnounce {
+			transportHeader += ";mode=record"
+		}
 
 		res, err := conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.SETUP,
@@ -553,11 +602,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient) bool {
 				}
 			}(),
 			Header: gortsplib.Header{
-				"Transport": []string{strings.Join([]string{
-					"RTP/AVP/TCP",
-					"unicast",
-					interleaved,
-				}, ";")},
+				"Transport": []string{transportHeader},
 			},
 		})
 		if err != nil {
@@ -677,6 +722,22 @@ outer:
 }
 
 func (s *stream) close() {
+	if s.conn != nil {
+		res, err := s.conn.WriteRequest(&gortsplib.Request{
+			Method: gortsplib.TEARDOWN,
+			Url: &url.URL{
+				Scheme: "rtsp",
+				Host:   s.ur.Host,
+				Path:   "/",
+			},
+		})
+		if err != nil {
+			s.log("TEARDOWN ERR: %s", err)
+		}
+
+		s.log("Sent TEARDOWN to server, response %s", res.StatusMessage)
+	}
+
 	close(s.terminate)
 	<-s.done
 }

@@ -3,13 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/aler9/gortsplib"
+	"gortc.io/sdp"
 	"io"
 	"log"
 	"net"
 	"strings"
-
-	"github.com/aler9/gortsplib"
-	"gortc.io/sdp"
 )
 
 func interleavedChannelToTrack(channel uint8) (int, trackFlow) {
@@ -91,6 +90,20 @@ func (c *serverClient) close() error {
 	delete(c.p.tcpl.clients, c)
 	c.conn.NetConn().Close()
 	close(c.write)
+
+	if len(c.p.tcpl.clients) == 0 {
+		c.log("closing path %s", c.path)
+		str, ok := c.p.streams[c.path]
+		if !ok {
+			return nil
+		}
+
+		c.log ("closing stream %s", str.path)
+		if str.state == _STREAM_STATE_READY {
+			c.log ("closing ready stream")
+			str.close()
+		}
+	}
 
 	return nil
 }
@@ -219,21 +232,24 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 	case gortsplib.OPTIONS:
 		// do not check state, since OPTIONS can be requested
 		// in any state
-
 		c.conn.WriteResponse(&gortsplib.Response{
 			StatusCode: gortsplib.StatusOK,
 			Header: gortsplib.Header{
 				"CSeq": []string{cseq[0]},
 				"Public": []string{strings.Join([]string{
-					string(gortsplib.ANNOUNCE),
 					string(gortsplib.DESCRIBE),
+					string(gortsplib.ANNOUNCE),
 					string(gortsplib.SETUP),
 					string(gortsplib.PLAY),
+					string(gortsplib.RECORD),
 					string(gortsplib.PAUSE),
 					string(gortsplib.TEARDOWN),
 				}, ", ")},
 			},
 		})
+
+		// set up the path in case needed for next call
+		c.path = path
 		return true
 
 	case gortsplib.DESCRIBE, gortsplib.ANNOUNCE:
@@ -284,18 +300,17 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 			str, ok := c.p.streams[path]
 			if !ok {
-
 				// create new stream
 				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
-				c.log("created new stream %s path %s", req.Url.Host, path)
-
 				if err != nil {
 					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
 
+				c.log("created new stream %s path %s", req.Url.Host, path)
+
 				str, ok = c.p.streams[path]
 				if !ok {
-					return nil, fmt.Errorf("WTF???")
+					return nil, fmt.Errorf("Unexpected Error")
 				}
 
 				// run the stream
@@ -507,7 +522,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return false
 		}
 
-	case gortsplib.PLAY:
+	case gortsplib.PLAY, gortsplib.RECORD:
 		if c.state != _CLIENT_STATE_PRE_PLAY {
 			c.writeResError(req, gortsplib.StatusBadRequest,
 				fmt.Errorf("client is in state '%s' instead of '%s'", c.state, _CLIENT_STATE_PRE_PLAY))
@@ -614,7 +629,15 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		return true
 
 	case gortsplib.TEARDOWN:
-		// close connection silently
+		// respond
+		c.conn.WriteResponse(&gortsplib.Response{
+			StatusCode: gortsplib.StatusOK,
+			Header: gortsplib.Header{
+				"CSeq":    []string{cseq[0]},
+			},
+		})
+
+		// close
 		return false
 
 	default:
