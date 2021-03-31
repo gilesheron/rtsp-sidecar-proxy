@@ -319,19 +319,17 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			}
 
 			for i := 0; str.state != _STREAM_STATE_READY; i++ {
+				c.log("stream %s is not ready yet", path)
 				c.p.tcpl.mutex.RUnlock()
 
 				if i > 5 {
-					return nil, fmt.Errorf("stream '%s' is not ready yet", path)
+					return nil, fmt.Errorf("ERR: stream '%s' is not ready", path)
 				}
 
 				time.Sleep(time.Millisecond)
 				c.p.tcpl.mutex.RLock()
 			}
-
-//			if str.state != _STREAM_STATE_READY {
-//				return nil, fmt.Errorf("stream '%s' is not ready yet", path)
-//			}
+			
 			return str.serverSdpText, nil
 		}()
 		if err != nil {
