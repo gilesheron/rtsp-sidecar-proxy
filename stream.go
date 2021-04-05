@@ -52,6 +52,8 @@ type stream struct {
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientPush bool) (*stream, error) {
 
+	fmt.Println("Creating new stream!!!!!")
+
 	// create a load balancer type and retrieve endpoints associated with ur.Hostname
 	lb, err := NewRoundRobinLB(ur.Hostname())
 	if err != nil {

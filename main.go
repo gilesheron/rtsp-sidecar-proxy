@@ -201,6 +201,8 @@ func newProgram(sargs []string) (*program, error) {
 		return nil, err
 	}
 
+	fmt.Println("checkpoint hit...")
+
 	go p.udplRtp.run()
 	go p.udplRtcp.run()
 	go p.tcpl.run()
