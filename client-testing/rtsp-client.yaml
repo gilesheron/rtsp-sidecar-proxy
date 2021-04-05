@@ -50,9 +50,6 @@ spec:
          - name: proxy-config
            mountPath: /tmp
   volumes:
-    - name: filets
-      hostPath:
-        path: /tmp/file.ts
     - name: proxy-config
       configMap:
         name: proxy-cfg

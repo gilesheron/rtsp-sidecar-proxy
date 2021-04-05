@@ -1,5 +1,3 @@
-kubectl delete pod client
-
 docker build -t ffmpeg-image .
 
 sleep 1

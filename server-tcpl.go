@@ -40,14 +40,19 @@ func (l *serverTcpListener) log(format string, args ...interface{}) {
 }
 
 func (l *serverTcpListener) run() {
+	l.log("waiting for connections...")
 	for {
 		nconn, err := l.nconn.AcceptTCP()
+		l.log("connection received!")
 		if err != nil {
+			l.log(err.Error())
 			break
 		}
 
 		newServerClient(l.p, nconn)
 	}
+
+	l.log("client channesl being close!")
 
 	// close clients
 	var doneChans []chan struct{}

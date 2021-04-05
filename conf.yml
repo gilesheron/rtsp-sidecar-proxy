@@ -1,0 +1,9 @@
+
+server:
+  protocols: [ tcp ]
+  rtspPort: 8555
+
+streams:
+  testproxy:
+    url: rtsp://:8554/teststream
+    protocol: udp
