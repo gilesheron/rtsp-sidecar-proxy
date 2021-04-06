@@ -75,7 +75,7 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 
 	// find an endpoint
 	if ur.Hostname() == "10.96.2.2" {
-		ur.Host = "192.168.154.31:8554"
+		ur.Host = "192.168.154.40:8554"
 	} else if ur.Hostname() == getLocalIP() {
 		ur.Host = "127.0.0.1:554"
 	}
