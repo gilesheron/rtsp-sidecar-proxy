@@ -1,0 +1,5 @@
+iptables -t nat -A OUTPUT -d 127.0.0.0/8 -j RETURN
+iptables -t nat -A OUTPUT -p tcp -m owner --uid-owner 1337 -j RETURN
+iptables -t nat -A OUTPUT -p tcp --dport 554 -j REDIRECT --to-ports 8554
+iptables -t nat -A OUTPUT -p udp --dport 8000 -j REDIRECT --to-ports 8050
+iptables -t nat -A OUTPUT -p udp --dport 8001 -j REDIRECT --to-ports 8051

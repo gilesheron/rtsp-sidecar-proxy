@@ -43,7 +43,7 @@ type stream struct {
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
 	serverSdpParsed *sdp.Message
-	clientAnnounce	bool
+	clientAnnounce  bool
 	firstTime       bool
 	terminate       chan struct{}
 	done            chan struct{}
@@ -67,18 +67,58 @@ func getLocalIP() string {
 	return ""
 }
 
-func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
+// check if given ip is in given cidr
+func ipInCidr(ip, cidr string) bool {
+	_, ipv4Net, err := net.ParseCIDR(cidr)
 
+	if err != nil {
+		log.Printf("Error occured parsing cidr: %s", err.Error())
+		return false
+	}
+
+	inNet := ipv4Net.Contains(net.ParseIP(ip))
+	return inNet
+}
+
+func assignHost(ur *url.URL) error {
 	if ur.Port() == "" {
 		ur.Host = ur.Hostname() + ":554"
 	}
 
 	// find an endpoint
-	if ur.Hostname() == "10.96.2.2" {
-		ur.Host = "192.168.154.40:8554"
+	if ipInCidr(ur.Hostname(), "10.96.0.0/16") {
+		lb, err := NewRoundRobinLB(ur.Hostname())
+
+		if err != nil {
+			return fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
+		}
+
+		// map to specific k8s service endpoint
+		host, err := MapToEndpoint(lb, ur.Hostname())
+
+		if err != nil {
+			return err
+		}
+
+		ur.Host = fmt.Sprintf("%s:8554", host)
 	} else if ur.Hostname() == getLocalIP() {
 		ur.Host = "127.0.0.1:554"
 	}
+
+	return nil
+}
+
+func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
+
+	// load balance rtsp endpoints
+	err := assignHost(ur)
+
+	if err != nil {
+		log.Printf("Error occured in stream host setup: %s", err.Error())
+		panic(err.Error())
+	}
+
+	log.Printf("New stream host set to: %s", ur.Host)
 
 	if ur.Scheme != "rtsp" {
 		return nil, fmt.Errorf("unsupported scheme: %s", ur.Scheme)
@@ -222,7 +262,7 @@ func (s *stream) do() bool {
 				RawQuery: s.ur.RawQuery,
 			},
 			Header: gortsplib.Header{
-				"Content-Type": []string{"application/sdp"},
+				"Content-Type":   []string{"application/sdp"},
 				"Content-Length": []string{strconv.Itoa(len(serverSdpText))},
 			},
 			Content: serverSdpText,
