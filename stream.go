@@ -67,38 +67,7 @@ func getLocalIP() string {
 	return ""
 }
 
-// check if given ip is in given cidr
-func resolveHost(host string) (bool, string) {
-	var ip net.IP
-	ip = net.ParseIP(host)
-
-	// if host is not an ip, perform dns lookup
-	if ip == nil {
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			log.Panicf("Error occured resolving hostname: %s", err.Error())
-			return false, ""
-		}
-		ip = net.ParseIP(addrs[0])
-	}
-
-	var clusterIPs = "10.96.0.0/16"
-	_, ipv4Net, err := net.ParseCIDR(clusterIPs)
-
-	if err != nil {
-		log.Printf("Error occured parsing cidr: %s", err.Error())
-		return false, ""
-	}
-
-	// check if resolved host is in clusterIPs
-	inNet := ipv4Net.Contains(ip)
-	return inNet, ip.String()
-}
-
 func assignHost(ur *url.URL) error {
-	if ur.Port() == "" {
-		ur.Host = ur.Hostname() + ":554"
-	}
 
 	// handle local requests
 	if ur.Hostname() == getLocalIP() {
@@ -106,27 +75,19 @@ func assignHost(ur *url.URL) error {
 		return nil
 	}
 
-	// handle clusterIP requests
-	hitCluster, ip := resolveHost(ur.Hostname())
-
-	if !hitCluster {
-		log.Println("Warning: given ip/hostname was not resolved to a clusterIP")
-		return fmt.Errorf("given ip/hostname was not resolved to a clusterIP")
-	}
-
-	lb, err := NewRoundRobinLB(ip)
+	lb, err := NewRoundRobinLB(ur.Hostname())
 	if err != nil {
 		return fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
 	}
 
 	// map to specific k8s service endpoint
-	endpoint, err := MapToEndpoint(lb, ip)
+	endpoint, err := MapToEndpoint(lb, ur.Hostname())
 
 	if err != nil {
 		return err
 	}
 
-	ur.Host = fmt.Sprintf("%s:8554", endpoint)
+	ur.Host = fmt.Sprintf("%s:8554", strings.Split(endpoint, ":")[0])
 	return nil
 }
 
