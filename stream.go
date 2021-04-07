@@ -68,16 +68,31 @@ func getLocalIP() string {
 }
 
 // check if given ip is in given cidr
-func ipInCidr(ip, cidr string) bool {
-	_, ipv4Net, err := net.ParseCIDR(cidr)
+func resolveHost(host string) (bool, string) {
+	var ip net.IP
+	ip = net.ParseIP(host)
+
+	// if host is not an ip, perform dns lookup
+	if ip == nil {
+		addrs, err := net.LookupHost(host)
+		if err != nil {
+			log.Panicf("Error occured resolving hostname: %s", err.Error())
+			return false, ""
+		}
+		ip = net.ParseIP(addrs[0])
+	}
+
+	var clusterIPs = "10.96.0.0/16"
+	_, ipv4Net, err := net.ParseCIDR(clusterIPs)
 
 	if err != nil {
 		log.Printf("Error occured parsing cidr: %s", err.Error())
-		return false
+		return false, ""
 	}
 
-	inNet := ipv4Net.Contains(net.ParseIP(ip))
-	return inNet
+	// check if resolved host is in clusterIPs
+	inNet := ipv4Net.Contains(ip)
+	return inNet, ip.String()
 }
 
 func assignHost(ur *url.URL) error {
@@ -85,26 +100,33 @@ func assignHost(ur *url.URL) error {
 		ur.Host = ur.Hostname() + ":554"
 	}
 
-	// find an endpoint
-	if ipInCidr(ur.Hostname(), "10.96.0.0/16") {
-		lb, err := NewRoundRobinLB(ur.Hostname())
-
-		if err != nil {
-			return fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
-		}
-
-		// map to specific k8s service endpoint
-		host, err := MapToEndpoint(lb, ur.Hostname())
-
-		if err != nil {
-			return err
-		}
-
-		ur.Host = fmt.Sprintf("%s:8554", host)
-	} else if ur.Hostname() == getLocalIP() {
+	// handle local requests
+	if ur.Hostname() == getLocalIP() {
 		ur.Host = "127.0.0.1:554"
+		return nil
 	}
 
+	// handle clusterIP requests
+	hitCluster, ip := resolveHost(ur.Hostname())
+
+	if !hitCluster {
+		log.Println("Warning: given ip/hostname was not resolved to a clusterIP")
+		return fmt.Errorf("given ip/hostname was not resolved to a clusterIP")
+	}
+
+	lb, err := NewRoundRobinLB(ip)
+	if err != nil {
+		return fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
+	}
+
+	// map to specific k8s service endpoint
+	endpoint, err := MapToEndpoint(lb, ip)
+
+	if err != nil {
+		return err
+	}
+
+	ur.Host = fmt.Sprintf("%s:8554", endpoint)
 	return nil
 }
 
