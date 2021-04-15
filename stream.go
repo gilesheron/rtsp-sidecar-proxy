@@ -77,7 +77,7 @@ func assignHost(ur *url.URL) error {
 
 	lb, err := NewRoundRobinLB(ur.Hostname())
 	if err != nil {
-		return fmt.Errorf("could not retrieve service enpoints from clusterIP: %v", err)
+		return fmt.Errorf("could not retrieve service endpoints from clusterIP: %v", err)
 	}
 
 	// map to specific k8s service endpoint
@@ -98,7 +98,7 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 
 	if err != nil {
 		log.Printf("Error occured in stream host setup: %s", err.Error())
-		panic(err.Error())
+		return nil, err
 	}
 
 	log.Printf("New stream host set to: %s", ur.Host)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 )
@@ -33,6 +34,9 @@ func getSvcEndpoints(clusterIP string) ([]string, error) {
 	queryParams := "clusterIP=" + url.QueryEscape(clusterIP)
 
 	query := fmt.Sprintf("http://%s%s?%s", host, path, queryParams)
+
+	log.Printf("Query = %s", query)
+
 	resp, err := http.Get(query)
 
 	if err != nil {
@@ -48,7 +52,13 @@ func getSvcEndpoints(clusterIP string) ([]string, error) {
 
 	var endpoints []string
 	err = json.Unmarshal(body, &endpoints)
-	return endpoints, err
+	if err != nil {
+		return nil, err
+	} else if len(endpoints) == 0 {
+		return nil, fmt.Errorf("No Endpoints for service %s!", clusterIP)
+	}
+
+	return endpoints, nil
 }
 
 type RoundRobinLB struct {
@@ -146,3 +156,4 @@ func hash(s string) (uint32, error) {
 	}
 	return h.Sum32(), nil
 }
+

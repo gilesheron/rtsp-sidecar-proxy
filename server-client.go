@@ -94,15 +94,31 @@ func (c *serverClient) close() error {
 
 	if len(c.p.tcpl.clients) == 0 {
 		c.log("closing path %s", c.path)
-		str, ok := c.p.streams[c.path]
-		if !ok {
+
+		if len(c.p.streams) == 0 {
+			c.log("no streams")
 			return nil
 		}
 
-		c.log ("closing stream %s", str.path)
-		if str.state == _STREAM_STATE_READY {
-			c.log ("closing ready stream")
-			str.close()
+		str, ok := c.p.streams[c.path]
+
+		if !ok {
+			c.log("no stream for path %s", c.path)
+			return nil
+		} else {
+			if str == nil {
+				c.log("stream for path %s not created", c.path)
+				return nil
+			}
+
+			c.log ("closing stream for path %s", str.path)
+
+			if str.state == _STREAM_STATE_READY {
+				c.log ("closing ready stream")
+				str.close()
+			} else {
+				c.log("stream not ready")
+			}
 		}
 	}
 
@@ -420,7 +436,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 					str, ok := c.p.streams[path]
 					if !ok {
-						return fmt.Errorf("there is no stream on path '%s'", path)
+						return fmt.Errorf("there is no stream on path %s", path)
+					} else if str == nil {
+						return fmt.Errorf("stream for path %s not set up yet", path)
 					}
 
 					if str.state != _STREAM_STATE_READY {
@@ -554,7 +572,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 			str, ok := c.p.streams[c.path]
 			if !ok {
-				return fmt.Errorf("no one is streaming on path '%s'", c.path)
+				return fmt.Errorf("no one is streaming on path %s", c.path)
+			} else if str == nil {
+				return fmt.Errorf("stream on path %s is not valid", c.path)
 			}
 
 			if len(c.streamTracks) != len(str.serverSdpParsed.Medias) {
