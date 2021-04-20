@@ -39,6 +39,7 @@ type stream struct {
 	state           streamState
 	path            string
 	ur              *url.URL
+	endpoint        string
 	proto           streamProtocol
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
@@ -67,41 +68,39 @@ func getLocalIP() string {
 	return ""
 }
 
-func assignHost(ur *url.URL) error {
+func assignHost(ur *url.URL) (string, error) {
 
 	// handle local requests
 	if ur.Hostname() == getLocalIP() {
-		ur.Host = "127.0.0.1:554"
-		return nil
+		return "127.0.0.1:554", nil
 	}
 
 	lb, err := NewRoundRobinLB(ur.Hostname())
 	if err != nil {
-		return fmt.Errorf("could not retrieve service endpoints from clusterIP: %v", err)
+		return "", fmt.Errorf("could not retrieve service endpoints from clusterIP: %v", err)
 	}
 
 	// map to specific k8s service endpoint
 	endpoint, err := MapToEndpoint(lb, ur.Hostname())
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	ur.Host = fmt.Sprintf("%s:8554", strings.Split(endpoint, ":")[0])
-	return nil
+	return fmt.Sprintf("%s:8554", strings.Split(endpoint, ":")[0]), nil
 }
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
 
 	// load balance rtsp endpoints
-	err := assignHost(ur)
+	endpoint, err := assignHost(ur)
 
 	if err != nil {
 		log.Printf("Error occured in stream host setup: %s", err.Error())
 		return nil, err
 	}
 
-	log.Printf("New stream host set to: %s", ur.Host)
+	log.Printf("New stream host set to: %s", endpoint)
 
 	if ur.Scheme != "rtsp" {
 		return nil, fmt.Errorf("unsupported scheme: %s", ur.Scheme)
@@ -126,6 +125,7 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 		clientSdpParsed: clientSdpParsed,
 		terminate:       make(chan struct{}),
 		done:            make(chan struct{}),
+		endpoint:        endpoint,
 	}
 
 	return s, nil
@@ -165,7 +165,7 @@ func (s *stream) do() bool {
 	var err error
 	dialDone := make(chan struct{})
 	go func() {
-		nconn, err = net.DialTimeout("tcp", s.ur.Host, _DIAL_TIMEOUT)
+		nconn, err = net.DialTimeout("tcp", s.endpoint, _DIAL_TIMEOUT)
 		close(dialDone)
 	}()
 
@@ -210,7 +210,7 @@ func (s *stream) do() bool {
 		Method: gortsplib.OPTIONS,
 		Url: &url.URL{
 			Scheme: "rtsp",
-			Host:   s.ur.Host,
+			Host:   s.endpoint,
 			Path:   "/",
 		},
 	})
@@ -240,7 +240,7 @@ func (s *stream) do() bool {
 			Method: gortsplib.ANNOUNCE,
 			Url: &url.URL{
 				Scheme:   "rtsp",
-				Host:     s.ur.Host,
+				Host:     s.endpoint,
 				Path:     s.ur.Path,
 				RawQuery: s.ur.RawQuery,
 			},
@@ -266,7 +266,7 @@ func (s *stream) do() bool {
 			Method: gortsplib.DESCRIBE,
 			Url: &url.URL{
 				Scheme:   "rtsp",
-				Host:     s.ur.Host,
+				Host:     s.endpoint,
 				Path:     s.ur.Path,
 				RawQuery: s.ur.RawQuery,
 			},
@@ -293,6 +293,26 @@ func (s *stream) do() bool {
 		if contentType[0] != "application/sdp" {
 			s.log("ERR: wrong Content-Type, expected application/sdp")
 			return true
+		}
+
+		contentBase, ok := res.Header["Content-Base"]
+		if !ok || len (contentBase) != 1 {
+			s.log("Content-Base not provided")
+		} else {
+			s.log("Content-Base is %s", contentBase[0])
+			contentBaseUrl, err := url.Parse(contentBase[0])
+			if err != nil {
+				s.log("ERR: Unable to parse Content-Base URL %s", contentBase[0])
+				return true
+			}
+
+			// if the endpoint is in the SDP then rewrite it
+			if contentBaseUrl.Host == s.endpoint {
+				s.log("Rewriting host from %s to %s", s.endpoint, s.ur.Host)
+
+				contentBaseUrl.Host = s.ur.Host
+				res.Header["Content-Base"][0] = contentBaseUrl.String()
+			}
 		}
 
 		clientSdpParsed, err = gortsplib.SDPParse(res.Content)
@@ -397,7 +417,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 				// relative path
 				return &url.URL{
 					Scheme: "rtsp",
-					Host:   s.ur.Host,
+					Host:   s.endpoint,
 					Path: func() string {
 						ret := s.ur.Path
 
@@ -476,7 +496,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 		Method: gortsplib.PLAY,
 		Url: &url.URL{
 			Scheme:   "rtsp",
-			Host:     s.ur.Host,
+			Host:     s.endpoint,
 			Path:     s.ur.Path,
 			RawQuery: s.ur.RawQuery,
 		},
@@ -535,7 +555,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 				Method: gortsplib.OPTIONS,
 				Url: &url.URL{
 					Scheme: "rtsp",
-					Host:   s.ur.Host,
+					Host:   s.endpoint,
 					Path:   "/",
 				},
 			})
@@ -604,7 +624,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 				// relative path
 				return &url.URL{
 					Scheme: "rtsp",
-					Host:   s.ur.Host,
+					Host:   s.endpoint,
 					Path: func() string {
 						ret := s.ur.Path
 
@@ -657,7 +677,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 		Method: gortsplib.PLAY,
 		Url: &url.URL{
 			Scheme:   "rtsp",
-			Host:     s.ur.Host,
+			Host:     s.endpoint,
 			Path:     s.ur.Path,
 			RawQuery: s.ur.RawQuery,
 		},
@@ -750,7 +770,7 @@ func (s *stream) close() {
 			Method: gortsplib.TEARDOWN,
 			Url: &url.URL{
 				Scheme: "rtsp",
-				Host:   s.ur.Host,
+				Host:   s.endpoint,
 				Path:   "/",
 			},
 		})
@@ -762,5 +782,5 @@ func (s *stream) close() {
 	}
 
 	close(s.terminate)
-	<-s.done
+	// <-s.done
 }

@@ -158,9 +158,12 @@ func (c *serverClient) run() {
 	}
 
 	func() {
+		c.log("locking")
 		c.p.tcpl.mutex.Lock()
 		defer c.p.tcpl.mutex.Unlock()
+		c.log("closing")
 		c.close()
+		c.log("closed")
 	}()
 
 	c.log("disconnected")
@@ -221,7 +224,7 @@ func (c *serverClient) validateAuth(req *gortsplib.Request, user string, pass st
 }
 
 func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
-	c.log(string(req.Method))
+	c.log("Method %s, URL %s", string(req.Method), req.Url.String())
 
 	cseq, ok := req.Header["CSeq"]
 	if !ok || len(cseq) != 1 {
@@ -312,8 +315,8 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		}
 
 		svrSdpText, err := func() ([]byte, error) {
-			c.p.tcpl.mutex.RLock()
-			defer c.p.tcpl.mutex.RUnlock()
+			c.p.tcpl.mutex.Lock()
+			defer c.p.tcpl.mutex.Unlock()
 
 			str, ok := c.p.streams[path]
 			if !ok {
@@ -334,17 +337,18 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				go str.run()
 			}
 
-			for i := 0; i < 5; i++ {
-				c.log("stream %s is not ready yet", path)
-				c.p.tcpl.mutex.RUnlock()
-
-				time.Sleep(time.Millisecond)
-				c.p.tcpl.mutex.RLock()
-
+			for i := 0; i < 25; i++ {
 				if str.state == _STREAM_STATE_READY {
+					c.log("stream %s is ready", path)
 					break
 				}
+				c.log("stream %s is not ready yet", path)
+
+				c.p.tcpl.mutex.Unlock()
+				time.Sleep(time.Millisecond)
+				c.p.tcpl.mutex.Lock()
 			}
+
 			if str.state != _STREAM_STATE_READY {
 				return nil, fmt.Errorf("ERR: stream '%s' is not ready", path)
 			}

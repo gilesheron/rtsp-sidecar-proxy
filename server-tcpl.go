@@ -10,14 +10,14 @@ import (
 
 type serverTcpListener struct {
 	p       *program
-	nconn   *net.TCPListener
+	listen  *net.TCPListener
 	mutex   sync.RWMutex
 	clients map[*serverClient]struct{}
 	done    chan struct{}
 }
 
 func newServerTcpListener(p *program) (*serverTcpListener, error) {
-	nconn, err := net.ListenTCP("tcp", &net.TCPAddr{
+	listen, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: p.conf.Server.RtspPort,
 	})
 	if err != nil {
@@ -26,7 +26,7 @@ func newServerTcpListener(p *program) (*serverTcpListener, error) {
 
 	l := &serverTcpListener{
 		p:       p,
-		nconn:   nconn,
+		listen:   listen,
 		clients: make(map[*serverClient]struct{}),
 		done:    make(chan struct{}),
 	}
@@ -41,13 +41,19 @@ func (l *serverTcpListener) log(format string, args ...interface{}) {
 
 func (l *serverTcpListener) run() {
 	for {
-		nconn, err := l.nconn.AcceptTCP()
+		l.log("listening for TCP connections")
+		nconn, err := l.listen.AcceptTCP()
 		if err != nil {
+			l.log("Unable to accept TCP connection %s", err.Error())
 			break
 		}
 
 		newServerClient(l.p, nconn)
+
+		l.log("Started new server client %s", nconn.RemoteAddr().String())
 	}
+
+	l.log ("closing TCP clients")
 
 	// close clients
 	var doneChans []chan struct{}
@@ -67,7 +73,7 @@ func (l *serverTcpListener) run() {
 }
 
 func (l *serverTcpListener) close() {
-	l.nconn.Close()
+	l.listen.Close()
 	<-l.done
 }
 
