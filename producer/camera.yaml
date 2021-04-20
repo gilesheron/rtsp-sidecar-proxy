@@ -23,11 +23,22 @@ metadata:
   labels:
     run: camera
 spec:
+  type: NodePort
   clusterIP: 10.96.2.2
   ports:
-  - name: proxy
+  - name: rtsp 
     port: 554
+    targetPort: 8554
+    nodePort: 30554
     protocol: TCP
+  - name: rtp
+    port: 8000
+    targetPort: 8050
+    protocol: UDP
+  - name: rtcp
+    port: 8001
+    targetPort: 8051
+    protocol: UDP
   selector:
     app: camera
 
