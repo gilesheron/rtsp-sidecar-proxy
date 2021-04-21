@@ -106,6 +106,10 @@ func (c *serverClient) close() error {
 			c.log("no stream for path %s", c.path)
 			return nil
 		} else {
+
+			// delete stream from list
+			delete (c.p.streams, c.path)
+
 			if str == nil {
 				c.log("stream for path %s not created", c.path)
 				return nil
