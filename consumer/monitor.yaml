@@ -1,0 +1,54 @@
+---        
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor-service
+  labels:
+    run: monitor
+spec:
+  type: NodePort
+  clusterIP: 10.96.3.3
+  ports:
+  - name: rtsp 
+    port: 554
+    targetPort: 554
+    nodePort: 31554
+    protocol: TCP
+  selector:
+    app: monitor
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor
+  labels:
+    app: monitor
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitor
+  template:
+    metadata:
+      labels:
+        app: monitor
+    spec:
+      containers:
+        - name: rtsp
+          image: aler9/rtsp-simple-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RTSP_RTSPPORT
+              value: "554"
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001
