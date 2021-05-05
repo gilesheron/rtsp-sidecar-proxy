@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,47 +15,39 @@ data:
       rtcpPort: 8051
       readUser:
       readPass:
-
----        
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: camera-service
+  name: facemask-service
   labels:
-    run: camera
+    run: facemask
 spec:
-  clusterIP: 10.96.2.2
+  type: NodePort
+  clusterIP: 10.96.5.5
   ports:
-  - name: rtsp 
+  - name: rtsp
     port: 554
     targetPort: 8554
-    port: 8000
-    targetPort: 8050
-    protocol: UDP
-  - name: rtcp
-    port: 8001
-    targetPort: 8051
-    protocol: UDP
+    nodePort: 32555
+    protocol: TCP
   selector:
-    app: camera
-
+    app: facemask
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: camera
-  labels:
-    app: camera
+  name: facemask
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: camera
+      app: facemask
   template:
     metadata:
       labels:
-        app: camera
+        app: facemask
     spec:
       initContainers:
         - name: init
@@ -94,28 +87,17 @@ spec:
             - name: proxy-config
               mountPath: /tmp
 
-        - name: rtsp
-          image: rtsp-simple-server:latest
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: RTSP_RTSPPORT
-              value: "554"
-          ports:
-            - name: rtsp
-              protocol: TCP
-              containerPort: 554
-            - name: rtp
-              protocol: UDP
-              containerPort: 8000
-            - name: rtcp
-              protocol: UDP
-              containerPort: 8001
-
-        - name: ffmpeg
-          image: ffmpeg-image
+        - name: facemask 
+          image: facemask-detector:latest
           imagePullPolicy: Never
-
+          env:
+            - name: RTSP_TRANSPORT
+              value: "tcp"
+            - name: INPUT_RTSP_URL
+              value: "rtsp://10.96.2.2:554/mystream"  
+            - name: OUTPUT_RTSP_URL
+              value: "rtsp://10.96.3.3:8554/mystream"
       volumes:
         - name: proxy-config
           configMap:
-            name: proxy-cfg
+            name: proxy-cfg 

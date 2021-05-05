@@ -19,59 +19,41 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: camera-service
+  name: gateway-service
   labels:
-    run: camera
+    run: gateway 
 spec:
-  clusterIP: 10.96.2.2
+  type: NodePort
+  clusterIP: 10.96.4.4
   ports:
   - name: rtsp 
-    port: 554
+    port: 8554
     targetPort: 8554
-    port: 8000
-    targetPort: 8050
-    protocol: UDP
-  - name: rtcp
-    port: 8001
-    targetPort: 8051
-    protocol: UDP
+    nodePort: 30554
+    protocol: TCP
   selector:
-    app: camera
+    app: gateway
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: camera
+  name: gateway
   labels:
-    app: camera
+    app: gateway
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: camera
+      app: gateway
   template:
     metadata:
       labels:
-        app: camera
+        app: gateway
+        
     spec:
-      initContainers:
-        - name: init
-          image: init:latest
-          imagePullPolicy: Never
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              add:
-              - NET_ADMIN
-              - NET_RAW
-              drop:
-              - ALL
-            privileged: false
-
       containers:
-
         - name: proxy
           image: rtsp-sidecar-proxy:latest
           imagePullPolicy: Never
@@ -93,28 +75,6 @@ spec:
           volumeMounts:
             - name: proxy-config
               mountPath: /tmp
-
-        - name: rtsp
-          image: rtsp-simple-server:latest
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: RTSP_RTSPPORT
-              value: "554"
-          ports:
-            - name: rtsp
-              protocol: TCP
-              containerPort: 554
-            - name: rtp
-              protocol: UDP
-              containerPort: 8000
-            - name: rtcp
-              protocol: UDP
-              containerPort: 8001
-
-        - name: ffmpeg
-          image: ffmpeg-image
-          imagePullPolicy: Never
-
       volumes:
         - name: proxy-config
           configMap:

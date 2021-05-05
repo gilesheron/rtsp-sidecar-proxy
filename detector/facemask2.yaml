@@ -1,0 +1,27 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facemask2
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: facemask2
+  template:
+    metadata:
+      labels:
+        app: facemask2
+    spec:
+      containers:
+        - name: facemask2 
+          image: facemask-detector:latest
+          imagePullPolicy: Never
+          env:
+            - name: RTSP_TRANSPORT
+              value: "tcp"
+            - name: INPUT_RTSP_URL
+              value: "rtsp://10.96.2.22:554/mystream"
+            - name: OUTPUT_RTSP_URL
+              value: "rtsp://10.96.3.3:8554/mystream"

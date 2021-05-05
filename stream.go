@@ -58,7 +58,7 @@ func getLocalIP() string {
 		return ""
 	}
 	for _, address := range addrs {
-		// check the address type and if it is not a loopback the display it
+		// check the address type and if it is not a loopback then get the IP
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
 				return ipnet.IP.String()
@@ -73,6 +73,23 @@ func assignHost(ur *url.URL) (string, error) {
 	// handle local requests
 	if ur.Hostname() == getLocalIP() {
 		return "127.0.0.1:554", nil
+	}
+
+	// hack
+	if ur.Hostname() == "i2ss-c2201.cisco.com" {
+		return "192.168.240.221:8554", nil
+	}
+
+	if ur.Hostname() == "i2ss-c2201" {
+		return "192.168.240.205:8554", nil
+	}
+
+	if ur.Hostname() == "127.0.0.1" {
+		return "10.244.1.3:8554", nil
+	}
+
+	if ur.Hostname() == "localhost" {
+		return "10.244.1.10:8554", nil
 	}
 
 	lb, err := NewRoundRobinLB(ur.Hostname())
@@ -582,7 +599,8 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 
 			if time.Since(lastFrameTime) >= _STREAM_DEAD_AFTER {
 				s.log("ERR: stream is dead")
-				return true
+				// if stream dies want to kill it and try again
+				return false
 			}
 		}
 	}

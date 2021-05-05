@@ -1,0 +1,6 @@
+kubectl apply -f k8s_api_handler/k8s_api.yaml
+kubectl apply -f configs/proxy.yaml
+kubectl apply -f producer/camera.yaml
+kubectl apply -f consumer/monitor.yaml
+kubectl apply -f consumer/gateway.yaml
+kubectl apply -f detector/facemask.yaml

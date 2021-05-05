@@ -15,8 +15,23 @@ type serverUdpListener struct {
 	p     *program
 	nconn *net.UDPConn
 	flow  trackFlow
+	mtu   int
 	write chan *udpWrite
 	done  chan struct{}
+}
+
+// GetLocalMTU returns the minimum MTU (hacky)
+func getLocalMTU() int {
+	mtu := 1500
+	netInterfaces, err := net.Interfaces()
+	if err == nil {
+		for _, netInterface := range netInterfaces {
+			if netInterface.MTU < mtu {
+				mtu = netInterface.MTU
+			}
+		}
+	}
+	return mtu
 }
 
 func newServerUdpListener(p *program, port int, flow trackFlow) (*serverUdpListener, error) {
@@ -33,9 +48,10 @@ func newServerUdpListener(p *program, port int, flow trackFlow) (*serverUdpListe
 		flow:  flow,
 		write: make(chan *udpWrite),
 		done:  make(chan struct{}),
+		mtu:   getLocalMTU(),
 	}
 
-	l.log("opened on :%d", port)
+	l.log("opened on :%d with MTU %d", port, l.mtu)
 	return l, nil
 }
 
@@ -58,6 +74,7 @@ func (l *serverUdpListener) run() {
 	}()
 
 	buf := make([]byte, 2048) // UDP MTU is 1400
+
 	for {
 		_, _, err := l.nconn.ReadFromUDP(buf)
 		if err != nil {

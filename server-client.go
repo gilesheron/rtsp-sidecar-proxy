@@ -85,6 +85,7 @@ func newServerClient(p *program, nconn net.Conn) *serverClient {
 func (c *serverClient) close() error {
 	// already deleted
 	if _, ok := c.p.tcpl.clients[c]; !ok {
+		c.log("client already deleted")
 		return nil
 	}
 

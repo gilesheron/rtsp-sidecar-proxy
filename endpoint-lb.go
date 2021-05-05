@@ -27,7 +27,7 @@ func UseTestingEndpoints(lb LoadBalancer, endpoints []string) {
 	lb.setEndpoints(endpoints)
 }
 
-// getSvcEndpoints -> Given a cluster ip, retrieve the associated endpoints
+// getSvcEndpoints -> Given a dest ip, retrieve the associated endpoints
 func getSvcEndpoints(clusterIP string) ([]string, error) {
 	host := "k8s-apiclient-service:9899"
 	path := "/svc/endpoints"

@@ -10,8 +10,8 @@ spec:
   clusterIP: 10.96.3.3
   ports:
   - name: rtsp 
-    port: 554
-    targetPort: 554
+    port: 8554
+    targetPort: 8554
     nodePort: 31554
     protocol: TCP
   selector:
@@ -37,18 +37,12 @@ spec:
     spec:
       containers:
         - name: rtsp
-          image: aler9/rtsp-simple-server:latest
-          imagePullPolicy: IfNotPresent
+          image: rtsp-simple-server:latest
+          imagePullPolicy: Never
           env:
             - name: RTSP_RTSPPORT
-              value: "554"
+              value: "8554"
           ports:
             - name: rtsp
               protocol: TCP
-              containerPort: 554
-            - name: rtp
-              protocol: UDP
-              containerPort: 8000
-            - name: rtcp
-              protocol: UDP
-              containerPort: 8001
+              containerPort: 8554

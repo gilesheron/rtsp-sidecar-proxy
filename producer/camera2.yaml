@@ -1,0 +1,38 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camera2
+  labels:
+    app: camera2
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: camera2
+  template:
+    metadata:
+      labels:
+        app: camera2
+    spec:
+      containers:
+        - name: rtsp
+          image: aler9/rtsp-simple-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RTSP_RTSPPORT
+              value: "554"
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001
+        - name: ffmpeg
+          image: ffmpeg-image
+          imagePullPolicy: Never
