@@ -85,11 +85,11 @@ func assignHost(ur *url.URL) (string, error) {
 	}
 
 	if ur.Hostname() == "127.0.0.1" {
-		return "10.244.1.3:8554", nil
+		return "10.244.1.7:8554", nil
 	}
 
 	if ur.Hostname() == "localhost" {
-		return "10.244.1.10:8554", nil
+		return "10.244.1.8:8554", nil
 	}
 
 	lb, err := NewRoundRobinLB(ur.Hostname())

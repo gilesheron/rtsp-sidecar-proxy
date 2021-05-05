@@ -22,6 +22,6 @@ spec:
             - name: RTSP_TRANSPORT
               value: "tcp"
             - name: INPUT_RTSP_URL
-              value: "rtsp://10.96.2.22:554/mystream"
+              value: "rtsp://10.244.1.7:8554/mystream"
             - name: OUTPUT_RTSP_URL
               value: "rtsp://10.96.3.3:8554/mystream"
