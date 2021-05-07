@@ -91,6 +91,10 @@ spec:
           image: facemask-detector:latest
           imagePullPolicy: Never
           env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: OPENCV_FFMPEG_CAPTURE_OPTIONS
+              value: "rtsp_transport;udp"
             - name: RTSP_TRANSPORT
               value: "tcp"
             - name: INPUT_RTSP_URL

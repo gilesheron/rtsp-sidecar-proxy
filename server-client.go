@@ -69,6 +69,7 @@ func newServerClient(p *program, nconn net.Conn) *serverClient {
 			WriteTimeout: p.writeTimeout,
 		}),
 		state: _CLIENT_STATE_STARTING,
+		path: "",
 		write: make(chan *gortsplib.InterleavedFrame),
 		done:  make(chan struct{}),
 	}
@@ -273,8 +274,6 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			},
 		})
 
-		// set up the path in case needed for next call
-		c.path = path
 		return true
 
 	case gortsplib.DESCRIBE, gortsplib.ANNOUNCE:

@@ -77,19 +77,19 @@ func assignHost(ur *url.URL) (string, error) {
 
 	// hack
 	if ur.Hostname() == "i2ss-c2201.cisco.com" {
-		return "192.168.240.221:8554", nil
+		return "192.168.240.242:8554", nil
 	}
 
 	if ur.Hostname() == "i2ss-c2201" {
-		return "192.168.240.205:8554", nil
+		return "192.168.240.243:8554", nil
 	}
 
 	if ur.Hostname() == "127.0.0.1" {
-		return "10.244.1.7:8554", nil
+		return "10.244.1.18:554", nil
 	}
 
 	if ur.Hostname() == "localhost" {
-		return "10.244.1.8:8554", nil
+		return "10.244.1.19:8554", nil
 	}
 
 	lb, err := NewRoundRobinLB(ur.Hostname())
