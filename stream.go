@@ -68,39 +68,46 @@ func getLocalIP() string {
 	return ""
 }
 
-func assignHost(ur *url.URL) (string, error) {
+func assignHost(ur *url.URL) (*url.URL, error) {
 
 	// handle local requests
 	if ur.Hostname() == getLocalIP() {
-		return "127.0.0.1:554", nil
+		localUrl, err := url.Parse("127.0.0.1:554/"+ur.Path)
+		return localUrl, err
 	}
 
-	lb, err := NewRoundRobinLB(ur.Hostname())
+	lb, err := NewRoundRobinLB(ur.String())
 	if err != nil {
-		return "", fmt.Errorf("could not retrieve service endpoints from clusterIP: %v", err)
+		return nil, fmt.Errorf("could not retrieve service endpoints from clusterIP: %v", err)
 	}
 
-	// map to specific k8s service endpoint
-	endpoint, err := MapToEndpoint(lb, ur.Hostname())
+	// map to specific k8s service url
+	urlStr, err := MapToUrl(lb, ur.String())
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return fmt.Sprintf("%s:8554", strings.Split(endpoint, ":")[0]), nil
+	svcUrl, err := url.Parse(urlStr)
+
+	if err != nil {
+		return nil, err
+	}
+	//return fmt.Sprintf("%s:8554", strings.Split(endpoint, ":")[0]), nil
+	return svcUrl, nil
 }
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
 
 	// load balance rtsp endpoints
-	endpoint, err := assignHost(ur)
+	assignedUrl, err := assignHost(ur)
 
 	if err != nil {
 		log.Printf("Error occured in stream host setup: %s", err.Error())
 		return nil, err
 	}
 
-	log.Printf("New stream host set to: %s", endpoint)
+	log.Printf("New stream set to: %v", assignedUrl)
 
 	if ur.Scheme != "rtsp" {
 		return nil, fmt.Errorf("unsupported scheme: %s", ur.Scheme)
@@ -117,15 +124,15 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 	s := &stream{
 		p:               p,
 		state:           _STREAM_STATE_STARTING,
-		path:            path,
-		ur:              ur,
+		path:            assignedUrl.Path,    // previously => path
+		ur:              ur,                  // previously => ur
 		proto:           proto,
 		firstTime:       true,
 		clientAnnounce:  clientAnnounce,
 		clientSdpParsed: clientSdpParsed,
 		terminate:       make(chan struct{}),
 		done:            make(chan struct{}),
-		endpoint:        endpoint,
+		endpoint:        assignedUrl.Host,    // previously => endpoint
 	}
 
 	return s, nil
