@@ -52,6 +52,7 @@ type serverClient struct {
 	p              *program
 	conn           *gortsplib.ConnServer
 	state          clientState
+	base_url       string
 	path           string
 	readAuth       *gortsplib.AuthServer
 	streamProtocol streamProtocol
@@ -69,6 +70,7 @@ func newServerClient(p *program, nconn net.Conn) *serverClient {
 			WriteTimeout: p.writeTimeout,
 		}),
 		state: _CLIENT_STATE_STARTING,
+		base_url: "",
 		path: "",
 		write: make(chan *gortsplib.InterleavedFrame),
 		done:  make(chan struct{}),
@@ -102,18 +104,18 @@ func (c *serverClient) close() error {
 			return nil
 		}
 
-		str, ok := c.p.streams[c.path]
+		str, ok := c.p.streams[c.base_url]
 
 		if !ok {
-			c.log("no stream for path %s", c.path)
+			c.log("no stream for URL %s", c.base_url)
 			return nil
 		} else {
 
 			// delete stream from list
-			delete (c.p.streams, c.path)
+			delete (c.p.streams, c.base_url)
 
 			if str == nil {
-				c.log("stream for path %s not created", c.path)
+				c.log("stream for URL %s not created", c.base_url)
 				return nil
 			}
 
@@ -254,6 +256,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		return ret
 	}()
 
+	// create base URL.  Will replace path after merging Cory's changes
+	base_url := "rtsp://" + req.Url.Hostname() + ":" + req.Url.Port() + "/" + path
+
 	switch req.Method {
 	case gortsplib.OPTIONS:
 		// do not check state, since OPTIONS can be requested
@@ -322,17 +327,17 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			c.p.tcpl.mutex.Lock()
 			defer c.p.tcpl.mutex.Unlock()
 
-			str, ok := c.p.streams[path]
+			str, ok := c.p.streams[base_url]
 			if !ok {
 				// create new stream
-				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
+				c.p.streams[base_url], err = newStream(c.p, path, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
 				if err != nil {
 					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
 
 				c.log("created new stream %s path %s", req.Url.Host, path)
 
-				str, ok = c.p.streams[path]
+				str, ok = c.p.streams[base_url]
 				if !ok {
 					return nil, fmt.Errorf("Unexpected Error")
 				}
@@ -343,10 +348,10 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 			for i := 0; i < 25; i++ {
 				if str.state == _STREAM_STATE_READY {
-					c.log("stream %s is ready", path)
+					c.log("stream %s is ready", base_url)
 					break
 				}
-				c.log("stream %s is not ready yet", path)
+				c.log("stream %s is not ready yet", base_url)
 
 				c.p.tcpl.mutex.Unlock()
 				time.Sleep(time.Millisecond)
@@ -354,7 +359,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			}
 
 			if str.state != _STREAM_STATE_READY {
-				return nil, fmt.Errorf("ERR: stream '%s' is not ready", path)
+				return nil, fmt.Errorf("ERR: stream '%s' is not ready", base_url)
 			}
 
 			return str.serverSdpText, nil
@@ -442,15 +447,15 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 					c.p.tcpl.mutex.Lock()
 					defer c.p.tcpl.mutex.Unlock()
 
-					str, ok := c.p.streams[path]
+					str, ok := c.p.streams[base_url]
 					if !ok {
-						return fmt.Errorf("there is no stream on path %s", path)
+						return fmt.Errorf("there is no stream for URL %s", base_url)
 					} else if str == nil {
-						return fmt.Errorf("stream for path %s not set up yet", path)
+						return fmt.Errorf("stream for URL %s not set up yet", base_url)
 					}
 
 					if str.state != _STREAM_STATE_READY {
-						return fmt.Errorf("stream '%s' is not ready yet", path)
+						return fmt.Errorf("stream '%s' is not ready yet", base_url)
 					}
 
 					if len(c.streamTracks) > 0 && c.streamProtocol != _STREAM_PROTOCOL_UDP {
@@ -461,6 +466,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 						return fmt.Errorf("all the tracks have already been setup")
 					}
 
+					c.base_url = base_url
 					c.path = path
 					c.streamProtocol = _STREAM_PROTOCOL_UDP
 					c.streamTracks = append(c.streamTracks, &track{
@@ -507,9 +513,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 					c.p.tcpl.mutex.Lock()
 					defer c.p.tcpl.mutex.Unlock()
 
-					str, ok := c.p.streams[path]
+					str, ok := c.p.streams[base_url]
 					if !ok {
-						return fmt.Errorf("there is no stream on path '%s'", path)
+						return fmt.Errorf("there is no stream on URL '%s'", base_url)
 					}
 
 					if len(c.streamTracks) > 0 && c.streamProtocol != _STREAM_PROTOCOL_TCP {
@@ -520,6 +526,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 						return fmt.Errorf("all the tracks have already been setup")
 					}
 
+					c.base_url = base_url
 					c.path = path
 					c.streamProtocol = _STREAM_PROTOCOL_TCP
 					c.streamTracks = append(c.streamTracks, &track{
@@ -578,11 +585,11 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			c.p.tcpl.mutex.Lock()
 			defer c.p.tcpl.mutex.Unlock()
 
-			str, ok := c.p.streams[c.path]
+			str, ok := c.p.streams[c.base_url]
 			if !ok {
-				return fmt.Errorf("no one is streaming on path %s", c.path)
+				return fmt.Errorf("no one is streaming for URL %s", c.base_url)
 			} else if str == nil {
-				return fmt.Errorf("stream on path %s is not valid", c.path)
+				return fmt.Errorf("stream on base URL %s is not valid", c.base_url)
 			}
 
 			if len(c.streamTracks) != len(str.serverSdpParsed.Medias) {
