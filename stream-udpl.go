@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -42,7 +43,13 @@ func newStreamUdpListener(p *program, port int) (*streamUdpListener, error) {
 		done:  make(chan struct{}),
 	}
 
+	l.log("listening on port %d", port)
+
 	return l, nil
+}
+
+func (l *streamUdpListener) log(format string, args ...interface{}) {
+	log.Printf("[UDP stream listener] "+format, args...)
 }
 
 func (l *streamUdpListener) close() {
