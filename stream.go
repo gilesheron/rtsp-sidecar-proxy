@@ -72,7 +72,7 @@ func assignHost(ur *url.URL) (*url.URL, error) {
 
 	// handle local requests
 	if ur.Hostname() == getLocalIP() {
-		localUrl, err := url.Parse("127.0.0.1:554/"+ur.Path)
+		localUrl, err := url.Parse("rtsp://127.0.0.1:554"+ur.Path)
 		return localUrl, err
 	}
 
@@ -98,6 +98,8 @@ func assignHost(ur *url.URL) (*url.URL, error) {
 }
 
 func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
+
+	log.Printf("path is %s", path)
 
 	// load balance rtsp endpoints
 	assignedUrl, err := assignHost(ur)
