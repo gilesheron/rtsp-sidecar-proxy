@@ -62,6 +62,9 @@ func (l *streamUdpListener) close() {
 
 func (l *streamUdpListener) start() {
 	l.state = _UDPL_STATE_RUNNING
+
+	l.log("starting UDP listener for %s", l.nconn.LocalAddr())
+
 	go l.run()
 }
 
@@ -71,6 +74,7 @@ func (l *streamUdpListener) run() {
 		// this is necessary since the buffer is propagated with channels
 		// so it must be unique.
 		buf := make([]byte, 2048) // UDP MTU is 1400
+
 		n, addr, err := l.nconn.ReadFromUDP(buf)
 		if err != nil {
 			break

@@ -97,9 +97,7 @@ func assignHost(ur *url.URL) (*url.URL, error) {
 	return svcUrl, nil
 }
 
-func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
-
-	log.Printf("path is %s", path)
+func newStream(p *program, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
 
 	// load balance rtsp endpoints
 	assignedUrl, err := assignHost(ur)
@@ -123,18 +121,24 @@ func newStream(p *program, path string, ur *url.URL, proto streamProtocol, clien
 		}
 	}
 
+	// assignedUrl.Path will have leading slash...
+	path := assignedUrl.Path
+	if len(path) > 0 {
+		path = path[1:]
+	}
+
 	s := &stream{
 		p:               p,
 		state:           _STREAM_STATE_STARTING,
-		path:            assignedUrl.Path,    // previously => path
-		ur:              ur,                  // previously => ur
+		path:            path,
+		ur:              ur,
 		proto:           proto,
 		firstTime:       true,
 		clientAnnounce:  clientAnnounce,
 		clientSdpParsed: clientSdpParsed,
 		terminate:       make(chan struct{}),
 		done:            make(chan struct{}),
-		endpoint:        assignedUrl.Host,    // previously => endpoint
+		endpoint:        assignedUrl.Host,
 	}
 
 	return s, nil

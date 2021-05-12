@@ -242,7 +242,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		ret := req.Url.Path
 
 		// remove leading slash
-		if len(ret) > 1 {
+		if len(ret) > 0 {
 			ret = ret[1:]
 		}
 
@@ -325,7 +325,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			str, ok := c.p.streams[path]
 			if !ok {
 				// create new stream
-				c.p.streams[path], err = newStream(c.p, path, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
+				c.p.streams[path], err = newStream(c.p, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
 				if err != nil {
 					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
