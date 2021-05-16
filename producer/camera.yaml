@@ -19,7 +19,7 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: camera-service
+  name: camera
   labels:
     run: camera
 spec:

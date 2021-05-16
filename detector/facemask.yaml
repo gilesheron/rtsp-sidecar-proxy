@@ -98,9 +98,9 @@ spec:
             - name: RTSP_TRANSPORT
               value: "tcp"
             - name: INPUT_RTSP_URL
-              value: "rtsp://10.96.2.2:554/mystream"  
+              value: "rtsp://10.96.2.2:554/camera"
             - name: OUTPUT_RTSP_URL
-              value: "rtsp://10.96.3.3:8554/mystream"
+              value: "rtsp://10.96.3.3:8554/monitor"
       volumes:
         - name: proxy-config
           configMap:
