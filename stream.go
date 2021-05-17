@@ -535,7 +535,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 	defer tickerSendKeepalive.Stop()
 
 	tickerCheckStream := time.NewTicker(_CHECK_STREAM_INTERVAL)
-	defer tickerSendKeepalive.Stop()
+	defer tickerCheckStream.Stop()
 
 	func() {
 		s.p.tcpl.mutex.Lock()
