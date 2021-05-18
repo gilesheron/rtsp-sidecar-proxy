@@ -6,13 +6,11 @@ metadata:
   labels:
     run: monitor
 spec:
-  type: NodePort
   clusterIP: 10.96.3.3
   ports:
   - name: rtsp 
     port: 8554
     targetPort: 8554
-    nodePort: 31554
     protocol: TCP
   selector:
     app: monitor
