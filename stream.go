@@ -46,6 +46,7 @@ type stream struct {
 	serverSdpParsed *sdp.Message
 	clientAnnounce  bool
 	firstTime       bool
+	ready			chan string
 	terminate       chan struct{}
 	done            chan struct{}
 	conn            *gortsplib.ConnClient
@@ -136,6 +137,7 @@ func newStream(p *program, ur *url.URL, proto streamProtocol, clientAnnounce boo
 		firstTime:       true,
 		clientAnnounce:  clientAnnounce,
 		clientSdpParsed: clientSdpParsed,
+		ready:           make(chan string),
 		terminate:       make(chan struct{}),
 		done:            make(chan struct{}),
 		endpoint:        assignedUrl.Host,
@@ -541,6 +543,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 		s.p.tcpl.mutex.Lock()
 		defer s.p.tcpl.mutex.Unlock()
 		s.state = _STREAM_STATE_READY
+		s.ready <- "UDP"
 	}()
 
 	defer func() {
@@ -557,6 +560,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 	}()
 
 	s.log("ready")
+
 
 	for {
 		select {
@@ -729,6 +733,7 @@ outer:
 		s.p.tcpl.mutex.Lock()
 		defer s.p.tcpl.mutex.Unlock()
 		s.state = _STREAM_STATE_READY
+		s.ready <- "tcp"
 	}()
 
 	defer func() {

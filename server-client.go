@@ -341,20 +341,20 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				go str.run()
 			}
 
-			for i := 0; i < 25; i++ {
-				if str.state == _STREAM_STATE_READY {
-					c.log("stream %s is ready", path)
-					break
-				}
-				c.log("stream %s is not ready yet", path)
-
-				c.p.tcpl.mutex.Unlock()
-				time.Sleep(time.Millisecond)
+			wait := time.Tick(time.Second * 15)
+			c.p.tcpl.mutex.Unlock()
+			select {
+			case <-wait:
 				c.p.tcpl.mutex.Lock()
-			}
-
-			if str.state != _STREAM_STATE_READY {
 				return nil, fmt.Errorf("ERR: stream '%s' is not ready", path)
+			case result, ok := <-str.ready:
+				c.p.tcpl.mutex.Lock()
+				if ok {
+					c.log("chan returned %s", result)
+					close(str.ready)
+				} else {
+					c.log("chan closed")
+				}
 			}
 
 			return str.serverSdpText, nil
