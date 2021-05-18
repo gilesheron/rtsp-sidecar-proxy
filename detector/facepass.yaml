@@ -19,9 +19,9 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: facemask-service
+  name: facepass-service
   labels:
-    run: facemask
+    run: facepass
 spec:
   type: NodePort
   clusterIP: 10.96.5.5
@@ -32,22 +32,22 @@ spec:
     nodePort: 32555
     protocol: TCP
   selector:
-    app: facemask
+    app: facepass
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: facemask
+  name: facepass
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: facemask
+      app: facepass
   template:
     metadata:
       labels:
-        app: facemask
+        app: facepass
     spec:
       initContainers:
         - name: init
@@ -87,8 +87,8 @@ spec:
             - name: proxy-config
               mountPath: /tmp
 
-        - name: facemask 
-          image: facemask-detector:latest
+        - name: facepass 
+          image: facepass:latest
           imagePullPolicy: Never
           env:
             - name: PYTHONUNBUFFERED
