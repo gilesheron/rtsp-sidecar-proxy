@@ -45,4 +45,4 @@ spec:
       containers:
         - name: k8s-apiclient
           image: chartsoo/k8s-apiclient:latest
-          imagePullPolicy: Always
+          imagePullPolicy: Never 
