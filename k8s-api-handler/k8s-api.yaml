@@ -42,6 +42,12 @@ spec:
         app: k8s-apiclient
 
     spec:
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
       containers:
         - name: k8s-apiclient
           image: chartsoo/k8s-apiclient:latest

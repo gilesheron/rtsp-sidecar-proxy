@@ -3,7 +3,13 @@ kind: Cluster
 nodes:
 - role: control-plane
   extraPortMappings:
-  - containerPort: 30554
-    hostPort: 30554
+  - containerPort: 8554
+    hostPort: 8554
     listenAddress: "0.0.0.0" # Optional, defaults to "0.0.0.0"
     protocol: tcp # Optional, defaults to tcp
+  - containerPort: 8050
+    hostPort: 8050
+    protocol: udp # Optional, defaults to tcp
+  - containerPort: 8051
+    hostPort: 8051
+    protocol: udp # Optional, defaults to tcp
