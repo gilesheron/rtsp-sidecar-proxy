@@ -103,7 +103,7 @@ func newStream(p *program, ur *url.URL, proto streamProtocol) (*stream, error) {
 	assignedUrl, err := assignHost(ur)
 
 	if err != nil {
-		log.Printf("Error occured in stream host setup: %s", err.Error())
+		log.Printf("Error occurred in stream host setup: %s", err.Error())
 		return nil, err
 	}
 

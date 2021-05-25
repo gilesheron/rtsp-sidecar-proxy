@@ -280,6 +280,9 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return false
 		}
 
+		// set up path now as valid from DESCRIBE onwards
+		c.path = path
+
 		err := c.validateAuth(req, c.p.conf.Server.ReadUser, c.p.conf.Server.ReadPass, &c.readAuth)
 		if err != nil {
 			if err == errAuthCritical {
@@ -289,14 +292,15 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 		}
 
 		svrSdpText, err := func() ([]byte, error) {
+			var serverSdpText []byte
 			c.p.tcpl.mutex.Lock()
-			defer c.p.tcpl.mutex.Unlock()
 
 			str, ok := c.p.streams[path]
 			if !ok {
 				// create new stream
 				c.p.streams[path], err = newStream(c.p, req.Url, c.streamProtocol)
 				if err != nil {
+					c.p.tcpl.mutex.Unlock()
 					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
 
@@ -304,6 +308,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 				str, ok = c.p.streams[path]
 				if !ok {
+					c.p.tcpl.mutex.Unlock()
 					return nil, fmt.Errorf("Unexpected Error")
 				}
 
@@ -315,7 +320,6 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			c.p.tcpl.mutex.Unlock()
 			select {
 			case <-wait:
-				c.p.tcpl.mutex.Lock()
 				return nil, fmt.Errorf("ERR: stream '%s' is not ready", path)
 			case result, ok := <-str.ready:
 				c.p.tcpl.mutex.Lock()
@@ -325,9 +329,11 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				} else {
 					c.log("chan closed")
 				}
+				serverSdpText = str.serverSdpText
+				c.p.tcpl.mutex.Unlock()
 			}
 
-			return str.serverSdpText, nil
+			return serverSdpText, nil
 		}()
 		if err != nil {
 			c.writeResError(req, gortsplib.StatusBadRequest, err)
@@ -421,7 +427,6 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 						return fmt.Errorf("all the tracks have already been setup")
 					}
 
-					c.path = path
 					c.streamProtocol = _STREAM_PROTOCOL_UDP
 					c.streamTracks = append(c.streamTracks, &track{
 						rtpPort:  rtpPort,
