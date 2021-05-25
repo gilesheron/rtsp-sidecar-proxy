@@ -19,17 +19,15 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: facepass-service
+  name: facepass
   labels:
     run: facepass
 spec:
-  type: NodePort
-  clusterIP: 10.96.5.5
+  clusterIP: 10.96.4.4
   ports:
   - name: rtsp
     port: 554
     targetPort: 8554
-    nodePort: 32555
     protocol: TCP
   selector:
     app: facepass
@@ -87,6 +85,23 @@ spec:
             - name: proxy-config
               mountPath: /tmp
 
+        - name: rtsp
+          image: rtsp-simple-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RTSP_RTSPPORT
+              value: "554"
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001
+
         - name: facepass 
           image: facepass:latest
           imagePullPolicy: Never
@@ -100,7 +115,8 @@ spec:
             - name: INPUT_RTSP_URL
               value: "rtsp://10.96.2.2:554/camera"
             - name: OUTPUT_RTSP_URL
-              value: "rtsp://10.96.3.3:8554/monitor"
+              value: "rtsp://127.0.0.1:554/facepass"
+
       volumes:
         - name: proxy-config
           configMap:

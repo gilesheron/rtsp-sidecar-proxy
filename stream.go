@@ -44,7 +44,6 @@ type stream struct {
 	clientSdpParsed *sdp.Message
 	serverSdpText   []byte
 	serverSdpParsed *sdp.Message
-	clientAnnounce  bool
 	firstTime       bool
 	ready			chan string
 	terminate       chan struct{}
@@ -98,7 +97,7 @@ func assignHost(ur *url.URL) (*url.URL, error) {
 	return svcUrl, nil
 }
 
-func newStream(p *program, ur *url.URL, proto streamProtocol, clientAnnounce bool, clientSdpParsed *sdp.Message) (*stream, error) {
+func newStream(p *program, ur *url.URL, proto streamProtocol) (*stream, error) {
 
 	// load balance rtsp endpoints
 	assignedUrl, err := assignHost(ur)
@@ -135,8 +134,6 @@ func newStream(p *program, ur *url.URL, proto streamProtocol, clientAnnounce boo
 		ur:              ur,
 		proto:           proto,
 		firstTime:       true,
-		clientAnnounce:  clientAnnounce,
-		clientSdpParsed: clientSdpParsed,
 		ready:           make(chan string),
 		terminate:       make(chan struct{}),
 		done:            make(chan struct{}),
@@ -242,103 +239,69 @@ func (s *stream) do() bool {
 		return true
 	}
 
-	// Init vars here so we can have common mutex lock after the if/else
-	clientSdpParsed := s.clientSdpParsed
-	serverSdpParsed := s.serverSdpParsed
-	serverSdpText := s.serverSdpText
+	res, err = conn.WriteRequest(&gortsplib.Request{
+		Method: gortsplib.DESCRIBE,
+		Url: &url.URL{
+			Scheme:   "rtsp",
+			Host:     s.endpoint,
+			Path:     s.ur.Path,
+			RawQuery: s.ur.RawQuery,
+		},
+	})
 
-	if s.clientAnnounce == true {
-		// create a filtered SDP that is sent to the server
-		serverSdpParsed, serverSdpText = gortsplib.SDPFilter(clientSdpParsed, res.Content)
-
-		res, err = conn.WriteRequest(&gortsplib.Request{
-			Method: gortsplib.ANNOUNCE,
-			Url: &url.URL{
-				Scheme:   "rtsp",
-				Host:     s.endpoint,
-				Path:     s.ur.Path,
-				RawQuery: s.ur.RawQuery,
-			},
-			Header: gortsplib.Header{
-				"Content-Type":   []string{"application/sdp"},
-				"Content-Length": []string{strconv.Itoa(len(serverSdpText))},
-			},
-			Content: serverSdpText,
-		})
-
-		if err != nil {
-			s.log("ANNOUNCE ERR: %s", err)
-			return true
-		}
-
-		if res.StatusCode != gortsplib.StatusOK {
-			s.log("ERR: ANNOUNCE returned code %d (%s)", res.StatusCode, res.StatusMessage)
-			return true
-		}
-
-	} else {
-		res, err = conn.WriteRequest(&gortsplib.Request{
-			Method: gortsplib.DESCRIBE,
-			Url: &url.URL{
-				Scheme:   "rtsp",
-				Host:     s.endpoint,
-				Path:     s.ur.Path,
-				RawQuery: s.ur.RawQuery,
-			},
-		})
-
-		if err != nil {
-			s.log("DESCRIBE ERR: %s", err)
-			return true
-		}
-
-		s.log("Sent DESCRIBE to Server, response %s", res.StatusMessage)
-
-		if res.StatusCode != gortsplib.StatusOK {
-			s.log("ERR: DESCRIBE returned code %d (%s)", res.StatusCode, res.StatusMessage)
-			return true
-		}
-
-		contentType, ok := res.Header["Content-Type"]
-		if !ok || len(contentType) != 1 {
-			s.log("ERR: Content-Type not provided")
-			return true
-		}
-
-		if contentType[0] != "application/sdp" {
-			s.log("ERR: wrong Content-Type, expected application/sdp")
-			return true
-		}
-
-		contentBase, ok := res.Header["Content-Base"]
-		if !ok || len (contentBase) != 1 {
-			s.log("Content-Base not provided")
-		} else {
-			s.log("Content-Base is %s", contentBase[0])
-			contentBaseUrl, err := url.Parse(contentBase[0])
-			if err != nil {
-				s.log("ERR: Unable to parse Content-Base URL %s", contentBase[0])
-				return true
-			}
-
-			// if the endpoint is in the SDP then rewrite it
-			if contentBaseUrl.Host == s.endpoint {
-				s.log("Rewriting host from %s to %s", s.endpoint, s.ur.Host)
-
-				contentBaseUrl.Host = s.ur.Host
-				res.Header["Content-Base"][0] = contentBaseUrl.String()
-			}
-		}
-
-		clientSdpParsed, err = gortsplib.SDPParse(res.Content)
-		if err != nil {
-			s.log("ERR: invalid SDP: %s", err)
-			return true
-		}
-
-		// create a filtered SDP that is used by the server (not by the client)
-		serverSdpParsed, serverSdpText = gortsplib.SDPFilter(clientSdpParsed, res.Content)
+	if err != nil {
+		s.log("DESCRIBE ERR: %s", err)
+		return true
 	}
+
+	s.log("Sent DESCRIBE to Server, response %s", res.StatusMessage)
+
+	if res.StatusCode != gortsplib.StatusOK {
+		s.log("ERR: DESCRIBE returned code %d (%s)", res.StatusCode, res.StatusMessage)
+		return true
+	}
+
+	contentType, ok := res.Header["Content-Type"]
+	if !ok || len(contentType) != 1 {
+		s.log("ERR: Content-Type not provided")
+		return true
+	}
+
+	if contentType[0] != "application/sdp" {
+		s.log("ERR: wrong Content-Type, expected application/sdp")
+		return true
+	}
+
+	contentBase, ok := res.Header["Content-Base"]
+	if !ok || len (contentBase) != 1 {
+		s.log("Content-Base not provided")
+		return true
+	}
+	
+	s.log("Content-Base is %s", contentBase[0])
+	contentBaseUrl, err := url.Parse(contentBase[0])
+	if err != nil {
+		s.log("ERR: Unable to parse Content-Base URL %s", contentBase[0])
+		return true
+	}
+
+	// if the endpoint is in the SDP then rewrite it
+	if contentBaseUrl.Host == s.endpoint {
+		s.log("Rewriting host from %s to %s", s.endpoint, s.ur.Host)
+
+		contentBaseUrl.Host = s.ur.Host
+		res.Header["Content-Base"][0] = contentBaseUrl.String()
+	}
+
+	clientSdpParsed, err := gortsplib.SDPParse(res.Content)
+
+	if err != nil {
+		s.log("ERR: invalid SDP: %s", err)
+		return true
+	}
+
+	// create a filtered SDP that is used by the server (not by the client) 
+	serverSdpParsed, serverSdpText := gortsplib.SDPFilter(clientSdpParsed, res.Content)
 
 	// update the stream
 	func() {
@@ -354,13 +317,13 @@ func (s *stream) do() bool {
 	s.log("running stream with protocol %s", s.proto)
 
 	if s.proto == _STREAM_PROTOCOL_UDP {
-		return s.runUdp(conn, s.clientAnnounce)
+		return s.runUdp(conn)
 	} else {
-		return s.runTcp(conn, s.clientAnnounce)
+		return s.runTcp(conn)
 	}
 }
 
-func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
+func (s *stream) runUdp(conn *gortsplib.ConnClient) bool {
 	publisherIp := conn.NetConn().RemoteAddr().(*net.TCPAddr).IP
 
 	var streamUdpListenerPairs []streamUdpListenerPair
@@ -405,10 +368,6 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 			"unicast",
 			fmt.Sprintf("client_port=%d-%d", rtpPort, rtcpPort),
 		}, ";")
-
-		if clientAnnounce {
-			transportHeader += ";mode=record"
-		}
 
 		res, err := conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.SETUP,
@@ -513,9 +472,9 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 			Scheme:   "rtsp",
 			Host:     s.endpoint,
 			Path:     s.ur.Path,
-			RawQuery: s.ur.RawQuery,
-		},
+			RawQuery: s.ur.RawQuery,},
 	})
+
 	if err != nil {
 		s.log("PLAY ERR: %s", err)
 		return true
@@ -561,7 +520,6 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 
 	s.log("ready")
 
-
 	for {
 		select {
 		case <-s.terminate:
@@ -606,7 +564,7 @@ func (s *stream) runUdp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 	}
 }
 
-func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
+func (s *stream) runTcp(conn *gortsplib.ConnClient) bool {
 	for i, media := range s.clientSdpParsed.Medias {
 		interleaved := fmt.Sprintf("interleaved=%d-%d", (i * 2), (i*2)+1)
 
@@ -615,10 +573,6 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 			"unicast",
 			interleaved,
 		}, ";")
-
-		if clientAnnounce {
-			transportHeader += ";mode=record"
-		}
 
 		res, err := conn.WriteRequest(&gortsplib.Request{
 			Method: gortsplib.SETUP,
@@ -700,6 +654,7 @@ func (s *stream) runTcp(conn *gortsplib.ConnClient, clientAnnounce bool) bool {
 			RawQuery: s.ur.RawQuery,
 		},
 	})
+
 	if err != nil {
 		s.log("Write Request ERR: %s", err)
 		return true

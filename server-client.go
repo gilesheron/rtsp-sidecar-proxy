@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/aler9/gortsplib"
-	"gortc.io/sdp"
 	"io"
 	"log"
 	"net"
@@ -264,10 +263,8 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 				"CSeq": []string{cseq[0]},
 				"Public": []string{strings.Join([]string{
 					string(gortsplib.DESCRIBE),
-					string(gortsplib.ANNOUNCE),
 					string(gortsplib.SETUP),
 					string(gortsplib.PLAY),
-					string(gortsplib.RECORD),
 					string(gortsplib.PAUSE),
 					string(gortsplib.TEARDOWN),
 				}, ", ")},
@@ -276,7 +273,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 
 		return true
 
-	case gortsplib.DESCRIBE, gortsplib.ANNOUNCE:
+	case gortsplib.DESCRIBE:
 		if c.state != _CLIENT_STATE_STARTING {
 			c.writeResError(req, gortsplib.StatusBadRequest,
 				fmt.Errorf("client is in state '%s' instead of '%s'", c.state, _CLIENT_STATE_STARTING))
@@ -291,33 +288,6 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return true
 		}
 
-		clientAnnounce := false
-		clientSdpParsed := new(sdp.Message)
-
-		if req.Method == gortsplib.ANNOUNCE {
-			contentType, ok := req.Header["Content-Type"]
-			if !ok || len(contentType) != 1 {
-				c.writeResError(req, gortsplib.StatusBadRequest,
-					fmt.Errorf("ERR: Content-Type not provided"))
-				return true
-			}
-
-			if contentType[0] != "application/sdp" {
-				c.writeResError(req, gortsplib.StatusBadRequest,
-					fmt.Errorf("ERR: wrong Content-Type, expected application/sdp"))
-				return true
-			}
-
-			clientSdpParsed, err = gortsplib.SDPParse(req.Content)
-			if err != nil {
-				c.writeResError(req, gortsplib.StatusBadRequest, err)
-				return true
-			}
-
-			// note that we're pushing to the server
-			clientAnnounce = true
-		}
-
 		svrSdpText, err := func() ([]byte, error) {
 			c.p.tcpl.mutex.Lock()
 			defer c.p.tcpl.mutex.Unlock()
@@ -325,7 +295,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			str, ok := c.p.streams[path]
 			if !ok {
 				// create new stream
-				c.p.streams[path], err = newStream(c.p, req.Url, c.streamProtocol, clientAnnounce, clientSdpParsed)
+				c.p.streams[path], err = newStream(c.p, req.Url, c.streamProtocol)
 				if err != nil {
 					return nil, fmt.Errorf("unable to create new stream on path '%s'", path)
 				}
@@ -363,26 +333,16 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			c.writeResError(req, gortsplib.StatusBadRequest, err)
 			return false
 		}
-
-
-		if req.Method == gortsplib.ANNOUNCE {
-			c.conn.WriteResponse(&gortsplib.Response{
-				StatusCode: gortsplib.StatusOK,
-				Header: gortsplib.Header{
-					"CSeq":         []string{cseq[0]},
-				},
-			})
-		} else {
-			c.conn.WriteResponse(&gortsplib.Response{
-				StatusCode: gortsplib.StatusOK,
-				Header: gortsplib.Header{
-					"CSeq":         []string{cseq[0]},
-					"Content-Base": []string{req.Url.String() + "/"},
-					"Content-Type": []string{"application/sdp"},
-				},
-				Content: svrSdpText,
-			})
-		}
+		
+		c.conn.WriteResponse(&gortsplib.Response{
+			StatusCode: gortsplib.StatusOK,
+			Header: gortsplib.Header{
+				"CSeq":         []string{cseq[0]},
+				"Content-Base": []string{req.Url.String() + "/"},
+				"Content-Type": []string{"application/sdp"},
+			},
+			Content: svrSdpText,
+		})
 
 		return true
 
@@ -561,7 +521,7 @@ func (c *serverClient) handleRequest(req *gortsplib.Request) bool {
 			return false
 		}
 
-	case gortsplib.PLAY, gortsplib.RECORD:
+	case gortsplib.PLAY:
 		if c.state != _CLIENT_STATE_PRE_PLAY {
 			c.writeResError(req, gortsplib.StatusBadRequest,
 				fmt.Errorf("client is in state '%s' instead of '%s'", c.state, _CLIENT_STATE_PRE_PLAY))
