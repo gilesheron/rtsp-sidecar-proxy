@@ -111,7 +111,7 @@ spec:
             - name: OPENCV_FFMPEG_CAPTURE_OPTIONS
               value: "rtsp_transport;udp"
             - name: RTSP_TRANSPORT
-              value: "tcp"
+              value: "udp"
             - name: INPUT_RTSP_URL
               value: "rtsp://10.96.2.2:554/camera"
             - name: OUTPUT_RTSP_URL
