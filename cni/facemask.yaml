@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: facemask
+  labels:
+    run: facemask
+spec:
+  clusterIP: 10.96.3.3
+  ports:
+  - name: rtsp
+    port: 554
+    targetPort: 8554
+    protocol: TCP
+  selector:
+    app: facemask
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facemask
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: facemask
+  template:
+    metadata:
+      labels:
+        app: facemask
+      annotations:
+        sidecar.mediastreamingmesh.io/inject: "true"
+    spec:
+      containers:
+        - name: rtsp
+          image: rtsp-simple-server:latest
+          imagePullPolicy: Never
+          env:
+            - name: RTSP_RTSPPORT
+              value: "554"
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001
+
+        - name: facemask 
+          image: facemask-detector:latest
+          imagePullPolicy: Never
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: OPENCV_FFMPEG_CAPTURE_OPTIONS
+              value: "rtsp_transport;udp"
+            - name: RTSP_TRANSPORT
+              value: "udp"
+            - name: INPUT_RTSP_URL
+              value: "rtsp://10.96.2.2:554/camera"
+            - name: OUTPUT_RTSP_URL
+              value: "rtsp://localhost:554/facemask"
+            - name: MQTT_URL
+              value: "10.96.0.3"
+            - name: MQTT_TOPIC
+              value: "topic/facemask.test"

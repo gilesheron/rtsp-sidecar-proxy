@@ -1,0 +1,65 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faceview
+  labels:
+    run: faceview
+spec:
+  clusterIP: 10.96.5.5
+  ports:
+  - name: rtsp
+    port: 554
+    targetPort: 8554
+    protocol: TCP
+  selector:
+    app: faceview
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faceview
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faceview
+  template:
+    metadata:
+      labels:
+        app: faceview
+      annotations:
+        sidecar.mediastreamingmesh.io/inject: "true"
+    spec:
+      containers:
+        - name: rtsp
+          image: rtsp-simple-server:latest
+          imagePullPolicy: Never
+          env:
+            - name: RTSP_RTSPPORT
+              value: "554"
+          ports:
+            - name: rtsp
+              protocol: TCP
+              containerPort: 554
+            - name: rtp
+              protocol: UDP
+              containerPort: 8000
+            - name: rtcp
+              protocol: UDP
+              containerPort: 8001
+        - name: faceview 
+          image: faceview:latest
+          imagePullPolicy: Never
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: OPENCV_FFMPEG_CAPTURE_OPTIONS
+              value: "rtsp_transport;udp"
+            - name: RTSP_TRANSPORT
+              value: "udp"
+            - name: INPUT_RTSP_URL
+              value: "rtsp://10.96.4.4:554/facepass"
+            - name: OUTPUT_RTSP_URL
+              value: "rtsp://127.0.0.1:554/faceview"
