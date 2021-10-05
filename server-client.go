@@ -57,6 +57,7 @@ type serverClient struct {
 	streamTracks   []*track
 	write          chan *gortsplib.InterleavedFrame
 	done           chan struct{}
+	seq            uint16
 }
 
 func newServerClient(p *program, nconn net.Conn) *serverClient {
@@ -71,6 +72,7 @@ func newServerClient(p *program, nconn net.Conn) *serverClient {
 		path: "",
 		write: make(chan *gortsplib.InterleavedFrame),
 		done:  make(chan struct{}),
+		seq:  0,
 	}
 
 	c.p.tcpl.mutex.Lock()

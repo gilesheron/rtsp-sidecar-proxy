@@ -90,6 +90,14 @@ func (l *serverTcpListener) forwardTrack(path string, id int, flow trackFlow, fr
 						},
 						buf: frame,
 					}
+					l.p.udplRtp.write <- &udpWrite{
+						addr: &net.UDPAddr{
+							IP:   c.ip(),
+							Zone: c.zone(),
+							Port: c.streamTracks[id].rtpPort,
+						},
+						buf: frame,
+					}
 				} else {
 					l.p.udplRtcp.write <- &udpWrite{
 						addr: &net.UDPAddr{

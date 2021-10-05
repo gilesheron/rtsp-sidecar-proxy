@@ -109,7 +109,7 @@ release-nodocker:
 	rm -rf release && mkdir release
 
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o /tmp/rtsp-sidecar-proxy
-	tar -C /tmp -czf $(PWD)/release/rtsp-sidecar-proxy_$(VERSION)_linux_amd64.tar.gz --owner=0 --group=0 rtsp-sidecar-proxy
+	tar -C /tmp -czf $(PWD)/release/rtsp-simple-proxy_$(VERSION)_linux_amd64.tar.gz --owner=0 --group=0 rtsp-sidecar-proxy
 
 define DOCKERFILE_TRAVIS
 FROM ruby:alpine
